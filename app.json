@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "USJ Wait Planner",
+    "slug": "usj-wait-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "usjwaitplanner",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.local.usjwaitplanner"
+    },
+    "android": {
+      "package": "com.local.usjwaitplanner",
+      "adaptiveIcon": {
+        "backgroundColor": "#101114"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
