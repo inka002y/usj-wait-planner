@@ -8,7 +8,10 @@ import {
   clearWaitSamples,
   getDatabaseStats,
   loadWaitSamples,
+  mergeWaitSamples,
+  persistWaitSamples,
 } from "./services/waitDatabase";
+import { fetchRemoteWaitSamples } from "./services/remoteWaitDatabase";
 import {
   AttractionAnalysis,
   ColorMode,
@@ -105,7 +108,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         endMinute: nextSchedule.closeMinute,
       }));
       const nextSamples = await appendLiveWaitSamples(nextLiveRows);
-      setSamples(nextSamples);
+      const remoteSamples = await fetchRemoteWaitSamples().catch(() => []);
+      const mergedSamples = mergeWaitSamples([...nextSamples, ...remoteSamples]);
+      if (remoteSamples.length > 0) {
+        await persistWaitSamples(mergedSamples);
+      }
+      setSamples(mergedSamples);
       setLastRefreshAt(new Date().toISOString());
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "待ち時間の取得に失敗しました");
@@ -169,8 +177,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.getItem(COLOR_MODE_KEY),
       AsyncStorage.getItem(SAVED_PLANS_KEY),
       loadWaitSamples(),
+      fetchRemoteWaitSamples().catch(() => []),
     ])
-      .then(([storedColorMode, storedPlans, storedSamples]) => {
+      .then(([storedColorMode, storedPlans, storedSamples, remoteSamples]) => {
         if (!mounted) return;
         if (storedColorMode === "dark" || storedColorMode === "light") {
           setColorModeState(storedColorMode);
@@ -185,7 +194,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setSavedPlans([]);
           }
         }
-        setSamples(storedSamples);
+        const mergedSamples = mergeWaitSamples([...storedSamples, ...remoteSamples]);
+        setSamples(mergedSamples);
+        if (remoteSamples.length > 0) {
+          persistWaitSamples(mergedSamples).catch(() => {});
+        }
       })
       .finally(() => {
         if (mounted) {

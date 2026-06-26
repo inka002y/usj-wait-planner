@@ -61,6 +61,14 @@ export async function persistWaitSamples(samples: WaitSample[]): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pruneSamples(samples)));
 }
 
+export function mergeWaitSamples(samples: WaitSample[]): WaitSample[] {
+  const merged = new Map<string, WaitSample>();
+  for (const sample of samples) {
+    merged.set(sampleKey(sample), sample);
+  }
+  return pruneSamples([...merged.values()]);
+}
+
 export async function appendLiveWaitSamples(liveRows: LiveWait[]): Promise<WaitSample[]> {
   const existing = await loadWaitSamples();
   const nextSamples = liveRows.map<WaitSample>((row) => ({
@@ -73,12 +81,7 @@ export async function appendLiveWaitSamples(liveRows: LiveWait[]): Promise<WaitS
     source: row.source,
   }));
 
-  const merged = new Map<string, WaitSample>();
-  for (const sample of [...existing, ...nextSamples]) {
-    merged.set(sampleKey(sample), sample);
-  }
-
-  const next = pruneSamples([...merged.values()]);
+  const next = mergeWaitSamples([...existing, ...nextSamples]);
   await persistWaitSamples(next);
   return next;
 }
