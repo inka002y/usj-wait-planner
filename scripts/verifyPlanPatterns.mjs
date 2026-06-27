@@ -137,6 +137,7 @@ for (const template of PLAN_TEMPLATES) {
       travelMinutes: plan.totalTravelMinutes,
       unscheduled: plan.unscheduledNames,
       generationMs,
+      optimization: plan.optimizationStats,
     });
   }
 }

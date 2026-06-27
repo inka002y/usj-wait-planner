@@ -286,6 +286,10 @@ export default function PlannerScreen() {
                 {generatedPlan.totalExpectedWaitMinutes}分 / 移動{generatedPlan.totalTravelMinutes}分
                 {lastGenerationMs !== null ? ` / 生成${lastGenerationMs}ms` : ""}
               </Text>
+              <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>
+                最適探索 {generatedPlan.optimizationStats.evaluatedStates.toLocaleString("ja-JP")}状態 / 候補
+                {generatedPlan.optimizationStats.candidateCount}件
+              </Text>
             </View>
             <View style={localStyles.saveBox}>
               <TextInput

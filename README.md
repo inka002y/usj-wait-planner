@@ -1,6 +1,15 @@
 # USJ Wait Planner
 
-Expo app for checking Universal Studios Japan wait times, storing local wait samples, analyzing trends, and generating a simple visit plan.
+Expo app for checking Universal Studios Japan wait times, storing local wait samples, analyzing trends, and generating optimized visit plans.
+
+## Route Planning
+
+Plans are generated with exact dynamic programming over the selected attractions. For a 13-attraction plan, the app avoids brute-forcing `13!` routes directly and instead compresses the search into reusable states while still optimizing across the full route-order space for the app's wait-time/travel-time model.
+
+Supported plan modes:
+
+- `効率`: maximize scheduled attractions, then minimize the weighted wait/travel score.
+- `移動少なめ`: maximize scheduled attractions, then minimize total travel minutes.
 
 ## Development
 
@@ -20,6 +29,7 @@ npm run dev:proxy
 ```powershell
 npm run typecheck
 npm run verify:no-mojibake
+npm run verify:plans
 npm run collect:waits
 npm run analyze:waits
 ```

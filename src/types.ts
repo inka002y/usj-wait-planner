@@ -108,6 +108,15 @@ export interface PlanItem {
   note?: string;
 }
 
+export interface PlanOptimizationStats {
+  algorithm: "exact-dp";
+  candidateCount: number;
+  theoreticalFullRouteCount: string;
+  theoreticalRouteCount: string;
+  evaluatedStates: number;
+  transitionCount: number;
+}
+
 export interface SavedPlan {
   id: string;
   name: string;
@@ -118,6 +127,7 @@ export interface SavedPlan {
   totalExpectedWaitMinutes: number;
   totalTravelMinutes: number;
   unscheduledNames: string[];
+  optimizationStats?: PlanOptimizationStats;
 }
 
 export interface UsjPlan {
@@ -125,4 +135,5 @@ export interface UsjPlan {
   totalExpectedWaitMinutes: number;
   totalTravelMinutes: number;
   unscheduledNames: string[];
+  optimizationStats: PlanOptimizationStats;
 }

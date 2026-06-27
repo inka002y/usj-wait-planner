@@ -72,6 +72,7 @@ function normalizeSavedPlan(raw: unknown): SavedPlan | null {
   return {
     ...(plan as SavedPlan),
     totalTravelMinutes: typeof plan.totalTravelMinutes === "number" ? plan.totalTravelMinutes : 0,
+    optimizationStats: plan.optimizationStats,
   };
 }
 
@@ -159,6 +160,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         totalExpectedWaitMinutes: plan.totalExpectedWaitMinutes,
         totalTravelMinutes: plan.totalTravelMinutes,
         unscheduledNames: plan.unscheduledNames,
+        optimizationStats: plan.optimizationStats,
       };
       const nextPlans = [nextPlan, ...savedPlans].slice(0, 8);
       setSavedPlans(nextPlans);
