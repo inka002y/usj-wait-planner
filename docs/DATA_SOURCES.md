@@ -12,3 +12,5 @@ The app also stores fetched live rows on-device with AsyncStorage. Those samples
 ## Hosted Collection
 
 The Supabase collector stores Queue-Times snapshots every 15 minutes in `public.usj_wait_samples`. The app reads the recent remote samples when `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are configured, then merges them with on-device samples for analysis.
+
+Queue-Times rows older than 90 minutes are treated as `unknown` for the current wait display and hosted collection. This prevents previous-day values from being shown as live wait times.

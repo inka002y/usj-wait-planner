@@ -8,6 +8,7 @@ const QUEUE_TIMES_URL = "https://queue-times.com/parks/284/queue_times.json";
 const THEMEPARKS_USJ_PARK_ID = "47f61fac-7586-41ac-ae80-61c9257cf33e";
 const THEMEPARKS_SCHEDULE_URL = `https://api.themeparks.wiki/v1/entity/${THEMEPARKS_USJ_PARK_ID}/schedule`;
 const LOCAL_WEB_PROXY_BASE = "http://localhost:8787";
+const STALE_WAIT_MAX_MINUTES = 90;
 
 interface QueueTimesRide {
   id?: number | string;
@@ -41,6 +42,10 @@ function statusFromQueueTimes(ride: QueueTimesRide): WaitStatus {
   if (ride.is_open === true) return "operating";
   if (ride.is_open === false) return "closed";
   return "unknown";
+}
+
+function isStaleWait(staleMinutes: number | null): boolean {
+  return staleMinutes !== null && staleMinutes > STALE_WAIT_MAX_MINUTES;
 }
 
 function normalizeWaitMinutes(value: unknown): number | null {
@@ -91,8 +96,9 @@ export async function fetchLiveWaits(): Promise<LiveWait[]> {
       const id = String(ride.id);
       const attraction = getAttractionOrFallback(id, ride.name ?? id);
       const waitMinutes = normalizeWaitMinutes(ride.wait_time);
-      const status = statusFromQueueTimes(ride);
+      const rawStatus = statusFromQueueTimes(ride);
       const staleMinutes = minutesBetween(ride.last_updated ?? null);
+      const status: WaitStatus = isStaleWait(staleMinutes) ? "unknown" : rawStatus;
 
       return {
         id: attraction.id,

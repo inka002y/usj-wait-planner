@@ -24,6 +24,7 @@ declare const Deno: {
 
 const QUEUE_TIMES_URL = "https://queue-times.com/parks/284/queue_times.json";
 const SOURCE = "queue-times";
+const STALE_WAIT_MAX_MINUTES = 90;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +84,13 @@ function normalizeWaitMinutes(value: unknown): number | null {
   return Math.max(0, Math.min(600, Math.round(value)));
 }
 
+function ageMinutes(lastUpdated: string | null | undefined, observedAt: Date): number | null {
+  if (!lastUpdated) return null;
+  const timestamp = Date.parse(lastUpdated);
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.floor((observedAt.getTime() - timestamp) / 60_000);
+}
+
 async function upsertRest(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -130,7 +138,8 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Supabase service credentials are not configured" }, 500);
   }
 
-  const observedAt = new Date().toISOString();
+  const observedDate = new Date();
+  const observedAt = observedDate.toISOString();
   const queueResponse = await fetch(QUEUE_TIMES_URL, {
     headers: {
       Accept: "application/json",
@@ -162,11 +171,13 @@ Deno.serve(async (req) => {
   const samples = rides.map((ride) => {
     const id = String(ride.id);
     const isOpen = ride.is_open === true;
+    const isStale = (ageMinutes(ride.last_updated, observedDate) ?? 0) > STALE_WAIT_MAX_MINUTES;
+    const status = isStale ? "unknown" : isOpen ? "operating" : "closed";
     return {
       attraction_id: id,
-      sampled_at: ride.last_updated ?? observedAt,
-      wait_minutes: isOpen ? normalizeWaitMinutes(ride.wait_time) : null,
-      status: isOpen ? "operating" : "closed",
+      sampled_at: isStale ? observedAt : ride.last_updated ?? observedAt,
+      wait_minutes: status === "operating" ? normalizeWaitMinutes(ride.wait_time) : null,
+      status,
       source: SOURCE,
     };
   });
@@ -179,6 +190,7 @@ Deno.serve(async (req) => {
     observedAt,
     rideCount: rides.length,
     operatingCount: samples.filter((row) => row.status === "operating").length,
+    staleCount: samples.filter((row) => row.status === "unknown").length,
     sampleCount: samples.length,
   });
 });
