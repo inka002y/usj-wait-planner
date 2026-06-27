@@ -1,6 +1,7 @@
 import { getAttractionById } from "../data/attractions";
 import {
   AttractionAnalysis,
+  PlanFixedBlockType,
   PlanItem,
   PlanOptions,
   Priority,
@@ -19,6 +20,15 @@ type Candidate = {
   familyScore: ScoreLevel;
   priority: Priority;
   analysis: AttractionAnalysis | null;
+  selectionIndex: number;
+};
+
+type FixedBlock = {
+  id: string;
+  type: PlanFixedBlockType | "meal";
+  name: string;
+  startMinute: number;
+  endMinute: number;
 };
 
 const PRIORITY_BONUS: Record<Priority, number> = {
@@ -46,6 +56,10 @@ const SCORE_WEIGHT: Record<PlanOptions["pace"], { wait: number; travel: number }
   balanced: { wait: 1, travel: 1.45 },
   family: { wait: 0.8, travel: 2.1 },
 };
+
+const OPTIONAL_FIXED_WAIT_CANDIDATE_LIMIT = 10;
+const OPTIONAL_FIXED_WAIT_MAX_GAP_MINUTES = 45;
+const EXACT_DP_CANDIDATE_LIMIT = 13;
 
 function expectedWaitAtMinute(analysis: AttractionAnalysis | null, minute: number, fallback: number): number {
   if (!analysis) return fallback;
@@ -103,7 +117,10 @@ type RouteStep =
       travelMinutes: number;
     }
   | {
-      type: "meal";
+      type: "fixed";
+      id: string;
+      blockType: FixedBlock["type"];
+      name: string;
       startMinute: number;
       endMinute: number;
     };
@@ -111,7 +128,7 @@ type RouteStep =
 type RouteState = {
   mask: number;
   lastIndex: number;
-  lunchInserted: boolean;
+  blockIndex: number;
   minute: number;
   totalExpectedWaitMinutes: number;
   totalTravelMinutes: number;
@@ -148,8 +165,8 @@ function orderedRouteCount(value: number): bigint {
   return result;
 }
 
-function stateKey(state: Pick<RouteState, "mask" | "lastIndex" | "lunchInserted">): string {
-  return `${state.mask}|${state.lastIndex}|${state.lunchInserted ? 1 : 0}`;
+function stateKey(state: Pick<RouteState, "mask" | "lastIndex" | "blockIndex">): string {
+  return `${state.mask}|${state.lastIndex}|${state.blockIndex}`;
 }
 
 function dominates(left: RouteState, right: RouteState): boolean {
@@ -161,48 +178,114 @@ function dominates(left: RouteState, right: RouteState): boolean {
   );
 }
 
-function insertState(states: Map<string, RouteState[]>, next: RouteState) {
+function insertState(states: Map<string, RouteState[]>, next: RouteState): boolean {
   const key = stateKey(next);
   const current = states.get(key) ?? [];
-  if (current.some((state) => dominates(state, next))) return;
+  if (current.some((state) => dominates(state, next))) return false;
   const pruned = current.filter((state) => !dominates(next, state));
   pruned.push(next);
   states.set(key, pruned);
+  return true;
 }
 
-function prepareLunch(state: RouteState, options: PlanOptions, buffer: number): RouteState {
-  if (state.lunchInserted || options.lunchMinute === null || state.minute < options.lunchMinute - 20) {
-    return state;
+function normalizeFixedBlocks(options: PlanOptions): FixedBlock[] {
+  const blocks: FixedBlock[] = [];
+  if (options.lunchMinute !== null) {
+    blocks.push({
+      id: "meal-lunch",
+      type: "meal",
+      name: "ランチ",
+      startMinute: options.lunchMinute,
+      endMinute: options.lunchMinute + 50,
+    });
   }
 
-  const lunchStart = Math.max(state.minute, options.lunchMinute);
-  const lunchEnd = Math.min(lunchStart + 50, options.endMinute);
-  if (lunchEnd <= lunchStart) {
-    return {
-      ...state,
-      lunchInserted: true,
-      lastIndex: -1,
-    };
+  for (const block of options.fixedBlocks ?? []) {
+    blocks.push({
+      id: block.id,
+      type: block.type,
+      name: block.name.trim() || (block.type === "show" ? "ショー" : "休憩"),
+      startMinute: block.startMinute,
+      endMinute: block.endMinute,
+    });
   }
 
+  return blocks
+    .map((block) => ({
+      ...block,
+      startMinute: Math.max(options.startMinute, Math.min(options.endMinute, block.startMinute)),
+      endMinute: Math.max(options.startMinute, Math.min(options.endMinute, block.endMinute)),
+    }))
+    .filter((block) => block.endMinute > block.startMinute)
+    .sort((left, right) => left.startMinute - right.startMinute || left.endMinute - right.endMinute);
+}
+
+function appendNextFixedBlock(state: RouteState, blocks: FixedBlock[], buffer: number): RouteState {
+  const block = blocks[state.blockIndex];
+  if (!block) return state;
+  const startMinute = Math.max(state.minute, block.startMinute);
+  const endMinute = Math.max(startMinute, block.endMinute);
   return {
     ...state,
-    minute: lunchEnd + buffer,
-    lunchInserted: true,
     lastIndex: -1,
+    blockIndex: state.blockIndex + 1,
+    minute: endMinute + buffer,
     steps: [
       ...state.steps,
       {
-        type: "meal",
-        startMinute: lunchStart,
-        endMinute: lunchEnd,
+        type: "fixed",
+        id: block.id,
+        blockType: block.type,
+        name: block.name,
+        startMinute,
+        endMinute,
       },
     ],
   };
 }
 
-function startMinuteOptions(earliestStart: number): number[] {
-  return [earliestStart];
+function appendRemainingFixedBlocks(state: RouteState, blocks: FixedBlock[], buffer: number): RouteState {
+  let next = state;
+  while (next.blockIndex < blocks.length) {
+    next = appendNextFixedBlock(next, blocks, buffer);
+  }
+  return next;
+}
+
+function canExploreOptionalFixedWait(state: RouteState, blocks: FixedBlock[], candidateCount: number): boolean {
+  const nextBlock = blocks[state.blockIndex];
+  if (!nextBlock || candidateCount > OPTIONAL_FIXED_WAIT_CANDIDATE_LIMIT) return false;
+  return nextBlock.startMinute - state.minute <= OPTIONAL_FIXED_WAIT_MAX_GAP_MINUTES;
+}
+
+function limitCandidatesForExactDp(
+  candidates: Candidate[],
+  options: PlanOptions,
+): { optimizedCandidates: Candidate[]; overflowCandidates: Candidate[] } {
+  if (candidates.length <= EXACT_DP_CANDIDATE_LIMIT) {
+    return { optimizedCandidates: candidates, overflowCandidates: [] };
+  }
+
+  const ranked = candidates
+    .map((candidate) => {
+      const fallback = getAttractionById(candidate.id)?.typicalWaitMinutes ?? 40;
+      const wait = expectedWaitAtMinute(candidate.analysis, options.startMinute, fallback);
+      const familyBonus = options.pace === "family" ? candidate.familyScore * 120 : 0;
+      const score =
+        PRIORITY_COVERAGE[candidate.priority] * 10000 +
+        familyBonus -
+        wait * 8 -
+        candidate.durationMinutes * 2 -
+        candidate.selectionIndex;
+      return { candidate, score };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  const optimizedIds = new Set(ranked.slice(0, EXACT_DP_CANDIDATE_LIMIT).map((row) => row.candidate.id));
+  return {
+    optimizedCandidates: candidates.filter((candidate) => optimizedIds.has(candidate.id)),
+    overflowCandidates: candidates.filter((candidate) => !optimizedIds.has(candidate.id)),
+  };
 }
 
 function compareFinalStates(left: RouteState, right: RouteState, options: PlanOptions): number {
@@ -236,14 +319,14 @@ function makePlanItems(steps: RouteStep[], candidates: Candidate[], endMinute: n
       if (free) items.push(free);
     }
 
-    if (step.type === "meal") {
+    if (step.type === "fixed") {
       items.push({
-        id: `meal-${step.startMinute}`,
-        type: "meal",
-        name: "ランチ",
+        id: step.id,
+        type: step.blockType,
+        name: step.name,
         startMinute: step.startMinute,
         endMinute: step.endMinute,
-        note: "混む前後に調整",
+        note: step.blockType === "meal" ? "食事" : step.blockType === "show" ? "固定ショー" : "固定予定",
       });
       continue;
     }
@@ -272,6 +355,60 @@ function makePlanItems(steps: RouteStep[], candidates: Candidate[], endMinute: n
   return items;
 }
 
+function scheduleCandidateFromState(params: {
+  state: RouteState;
+  candidate: Candidate;
+  candidateIndex: number;
+  candidates: Candidate[];
+  blocks: FixedBlock[];
+  options: PlanOptions;
+  buffer: number;
+}): RouteState | null {
+  let baseState = params.state;
+
+  while (true) {
+    const fromArea = baseState.lastIndex >= 0 ? params.candidates[baseState.lastIndex]?.area ?? null : null;
+    const travel = travelMinutes(fromArea, params.candidate.area, params.options.pace);
+    const start = Math.max(params.options.startMinute, baseState.minute + travel);
+    const fallback = getAttractionById(params.candidate.id)?.typicalWaitMinutes ?? 40;
+    const expectedWait = expectedWaitAtMinute(params.candidate.analysis, start, fallback);
+    const end = start + expectedWait + params.candidate.durationMinutes;
+    const nextBlock = params.blocks[baseState.blockIndex];
+
+    if (nextBlock && end + params.buffer > nextBlock.startMinute) {
+      baseState = appendNextFixedBlock(baseState, params.blocks, params.buffer);
+      continue;
+    }
+
+    if (end + params.buffer > params.options.endMinute) {
+      return null;
+    }
+
+    const bit = 1 << params.candidateIndex;
+    return {
+      mask: baseState.mask | bit,
+      lastIndex: params.candidateIndex,
+      blockIndex: baseState.blockIndex,
+      minute: end + params.buffer,
+      totalExpectedWaitMinutes: baseState.totalExpectedWaitMinutes + expectedWait,
+      totalTravelMinutes: baseState.totalTravelMinutes + travel,
+      totalScore: baseState.totalScore + transitionScore(params.candidate, expectedWait, travel, params.options),
+      priorityCoverage: baseState.priorityCoverage + PRIORITY_COVERAGE[params.candidate.priority],
+      steps: [
+        ...baseState.steps,
+        {
+          type: "ride",
+          candidateIndex: params.candidateIndex,
+          startMinute: start,
+          endMinute: end,
+          expectedWaitMinutes: expectedWait,
+          travelMinutes: travel,
+        },
+      ],
+    };
+  }
+}
+
 export function buildUsjPlan(params: {
   selectedAttractions: SelectedAttraction[];
   analyses: AttractionAnalysis[];
@@ -279,7 +416,7 @@ export function buildUsjPlan(params: {
 }): UsjPlan {
   const analysisById = new Map(params.analyses.map((row) => [row.id, row]));
   const candidates: Candidate[] = params.selectedAttractions
-    .map((selected) => {
+    .map((selected, selectionIndex) => {
       const attraction = getAttractionById(selected.attractionId);
       const analysis = analysisById.get(selected.attractionId) ?? null;
       if (!attraction && !analysis) return null;
@@ -292,20 +429,29 @@ export function buildUsjPlan(params: {
         familyScore: attraction?.familyScore ?? 3,
         priority: selected.priority,
         analysis,
+        selectionIndex,
       };
     })
     .filter((row): row is Candidate => row !== null);
-  const availableCandidates = candidates.filter((candidate) => !isUnavailable(candidate));
+  const allAvailableCandidates = candidates.filter((candidate) => !isUnavailable(candidate));
+  const { optimizedCandidates: availableCandidates, overflowCandidates } = limitCandidatesForExactDp(
+    allAvailableCandidates,
+    params.options,
+  );
   const unscheduledNames: string[] = candidates
     .filter(isUnavailable)
     .map((candidate) => `${candidate.name}（運休/情報なし）`);
+  for (const candidate of overflowCandidates) {
+    unscheduledNames.push(`${candidate.name}（候補上限）`);
+  }
   const buffer = PACE_BUFFER[params.options.pace];
+  const fixedBlocks = normalizeFixedBlocks(params.options);
 
   const states = new Map<string, RouteState[]>();
   insertState(states, {
     mask: 0,
     lastIndex: -1,
-    lunchInserted: params.options.lunchMinute === null,
+    blockIndex: 0,
     minute: params.options.startMinute,
     totalExpectedWaitMinutes: 0,
     totalTravelMinutes: 0,
@@ -321,51 +467,47 @@ export function buildUsjPlan(params: {
     const layer = [...states.values()]
       .flat()
       .filter((state) => popCount(state.mask) === scheduledCount);
+    const processedInLayer = new Set<string>();
 
-    for (const rawState of layer) {
+    for (let layerIndex = 0; layerIndex < layer.length; layerIndex += 1) {
+      const rawState = layer[layerIndex];
+      const processKey = [
+        stateKey(rawState),
+        rawState.minute,
+        rawState.totalExpectedWaitMinutes,
+        rawState.totalTravelMinutes,
+        rawState.priorityCoverage,
+        Math.round(rawState.totalScore * 1000),
+      ].join("|");
+      if (processedInLayer.has(processKey)) continue;
+      processedInLayer.add(processKey);
       evaluatedStates += 1;
-      const state = prepareLunch(rawState, params.options, buffer);
-      const fromArea = state.lastIndex >= 0 ? availableCandidates[state.lastIndex]?.area ?? null : null;
+
+      if (canExploreOptionalFixedWait(rawState, fixedBlocks, availableCandidates.length)) {
+        transitionCount += 1;
+        const nextBlockState = appendNextFixedBlock(rawState, fixedBlocks, buffer);
+        if (insertState(states, nextBlockState) && popCount(nextBlockState.mask) === scheduledCount) {
+          layer.push(nextBlockState);
+        }
+      }
 
       for (let index = 0; index < availableCandidates.length; index += 1) {
         const bit = 1 << index;
-        if ((state.mask & bit) !== 0) continue;
+        if ((rawState.mask & bit) !== 0) continue;
 
         const candidate = availableCandidates[index];
-        const travel = travelMinutes(fromArea, candidate.area, params.options.pace);
-        const earliestStart = Math.max(params.options.startMinute, state.minute + travel);
-
-        for (const start of startMinuteOptions(earliestStart)) {
-          transitionCount += 1;
-          const fallback = getAttractionById(candidate.id)?.typicalWaitMinutes ?? 40;
-          const expectedWait = expectedWaitAtMinute(candidate.analysis, start, fallback);
-          const end = start + expectedWait + candidate.durationMinutes;
-
-          if (end + buffer > params.options.endMinute) {
-            continue;
-          }
-
-          insertState(states, {
-            mask: state.mask | bit,
-            lastIndex: index,
-            lunchInserted: state.lunchInserted,
-            minute: end + buffer,
-            totalExpectedWaitMinutes: state.totalExpectedWaitMinutes + expectedWait,
-            totalTravelMinutes: state.totalTravelMinutes + travel,
-            totalScore: state.totalScore + transitionScore(candidate, expectedWait, travel, params.options),
-            priorityCoverage: state.priorityCoverage + PRIORITY_COVERAGE[candidate.priority],
-            steps: [
-              ...state.steps,
-              {
-                type: "ride",
-                candidateIndex: index,
-                startMinute: start,
-                endMinute: end,
-                expectedWaitMinutes: expectedWait,
-                travelMinutes: travel,
-              },
-            ],
-          });
+        transitionCount += 1;
+        const nextState = scheduleCandidateFromState({
+          state: rawState,
+          candidate,
+          candidateIndex: index,
+          candidates: availableCandidates,
+          blocks: fixedBlocks,
+          options: params.options,
+          buffer,
+        });
+        if (nextState) {
+          insertState(states, nextState);
         }
       }
     }
@@ -373,6 +515,7 @@ export function buildUsjPlan(params: {
 
   const best = [...states.values()]
     .flat()
+    .map((state) => appendRemainingFixedBlocks(state, fixedBlocks, buffer))
     .sort((left, right) => compareFinalStates(left, right, params.options))[0];
 
   if (!best) {

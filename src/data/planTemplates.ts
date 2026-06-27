@@ -24,6 +24,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
       startMinute: 9 * 60,
       endMinute: 20 * 60,
       lunchMinute: 12 * 60 + 20,
+      fixedBlocks: [],
     },
     selectedAttractions: [
       pick("12061", "must"),
@@ -45,6 +46,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
       startMinute: 9 * 60,
       endMinute: 21 * 60,
       lunchMinute: 13 * 60,
+      fixedBlocks: [],
     },
     selectedAttractions: [
       pick("14402", "must"),
@@ -67,6 +69,15 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
       startMinute: 8 * 60 + 30,
       endMinute: 21 * 60 + 30,
       lunchMinute: null,
+      fixedBlocks: [
+        {
+          id: "template-thirteen-break",
+          type: "break",
+          name: "補給・休憩",
+          startMinute: 16 * 60,
+          endMinute: 16 * 60 + 20,
+        },
+      ],
     },
     selectedAttractions: [
       pick("7065", "high"),
@@ -93,6 +104,22 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
       startMinute: 10 * 60,
       endMinute: 18 * 60,
       lunchMinute: 12 * 60,
+      fixedBlocks: [
+        {
+          id: "template-baby-nap",
+          type: "break",
+          name: "お昼寝・授乳休憩",
+          startMinute: 14 * 60 + 30,
+          endMinute: 15 * 60 + 10,
+        },
+        {
+          id: "template-baby-show",
+          type: "show",
+          name: "屋内ショー候補",
+          startMinute: 16 * 60,
+          endMinute: 16 * 60 + 30,
+        },
+      ],
     },
     selectedAttractions: [
       pick("7065", "must"),

@@ -88,6 +88,17 @@ export interface PlanOptions {
   endMinute: number;
   pace: PlanPace;
   lunchMinute: number | null;
+  fixedBlocks: PlanFixedBlock[];
+}
+
+export type PlanFixedBlockType = "break" | "show";
+
+export interface PlanFixedBlock {
+  id: string;
+  type: PlanFixedBlockType;
+  name: string;
+  startMinute: number;
+  endMinute: number;
 }
 
 export interface SelectedAttraction {
@@ -97,7 +108,7 @@ export interface SelectedAttraction {
 
 export interface PlanItem {
   id: string;
-  type: "ride" | "meal" | "free";
+  type: "ride" | "meal" | "free" | "break" | "show";
   name: string;
   area?: string;
   startMinute: number;

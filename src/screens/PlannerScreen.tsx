@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -6,7 +6,7 @@ import { useAppContext } from "../AppContext";
 import { Chip, getTheme, IconButton, PageHeader, Panel, Screen, WaitBadge } from "../components/ui";
 import { PLAN_TEMPLATES, PlanTemplate } from "../data/planTemplates";
 import { buildUsjPlan } from "../services/planner";
-import { PlanOptions, PlanPace, Priority, SelectedAttraction, UsjPlan } from "../types";
+import { PlanFixedBlockType, PlanOptions, PlanPace, Priority, SelectedAttraction, UsjPlan } from "../types";
 import { formatMinuteOfDay, parseClock } from "../utils/time";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
@@ -44,7 +44,9 @@ export default function PlannerScreen() {
   const theme = getTheme(colorMode === "dark");
   const [generatedPlan, setGeneratedPlan] = useState<UsjPlan | null>(null);
   const [lastGenerationMs, setLastGenerationMs] = useState<number | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [planName, setPlanName] = useState("USJプラン");
+  const generationToken = useRef(0);
   const selectedIds = new Set(selectedAttractions.map((row) => row.attractionId));
 
   const selectedRows = useMemo(
@@ -60,15 +62,29 @@ export default function PlannerScreen() {
     nextSelectedAttractions: SelectedAttraction[] = selectedAttractions,
     nextOptions: PlanOptions = planOptions,
   ) {
-    const startedAt = typeof performance === "undefined" ? Date.now() : performance.now();
-    const plan = buildUsjPlan({
-      selectedAttractions: nextSelectedAttractions,
-      analyses,
-      options: nextOptions,
-    });
-    const endedAt = typeof performance === "undefined" ? Date.now() : performance.now();
-    setGeneratedPlan(plan);
-    setLastGenerationMs(Math.max(1, Math.round(endedAt - startedAt)));
+    const token = generationToken.current + 1;
+    generationToken.current = token;
+    setIsGenerating(true);
+    setLastGenerationMs(null);
+
+    setTimeout(() => {
+      try {
+        const startedAt = typeof performance === "undefined" ? Date.now() : performance.now();
+        const plan = buildUsjPlan({
+          selectedAttractions: nextSelectedAttractions,
+          analyses,
+          options: nextOptions,
+        });
+        const endedAt = typeof performance === "undefined" ? Date.now() : performance.now();
+        if (generationToken.current !== token) return;
+        setGeneratedPlan(plan);
+        setLastGenerationMs(Math.max(1, Math.round(endedAt - startedAt)));
+      } finally {
+        if (generationToken.current === token) {
+          setIsGenerating(false);
+        }
+      }
+    }, 0);
   }
 
   function applyTemplate(template: PlanTemplate) {
@@ -84,6 +100,56 @@ export default function PlannerScreen() {
     setPlanOptions(nextOptions);
     if (generatedPlan) {
       generate(selectedAttractions, nextOptions);
+    }
+  }
+
+  function applyOptions(nextOptions: PlanOptions, regenerate = true) {
+    setPlanOptions(nextOptions);
+    if (generatedPlan && regenerate) {
+      generate(selectedAttractions, nextOptions);
+    }
+  }
+
+  function addFixedBlock(type: PlanFixedBlockType) {
+    const startMinute = type === "show" ? 15 * 60 : 14 * 60 + 30;
+    const duration = type === "show" ? 30 : 25;
+    applyOptions({
+      ...planOptions,
+      fixedBlocks: [
+        ...(planOptions.fixedBlocks ?? []),
+        {
+          id: `fixed-${Date.now()}`,
+          type,
+          name: type === "show" ? "ショー" : "休憩",
+          startMinute,
+          endMinute: startMinute + duration,
+        },
+      ],
+    });
+  }
+
+  function updateFixedBlock(
+    blockId: string,
+    patch: Partial<NonNullable<PlanOptions["fixedBlocks"]>[number]>,
+  ) {
+    applyOptions({
+      ...planOptions,
+      fixedBlocks: (planOptions.fixedBlocks ?? []).map((block) =>
+        block.id === blockId ? { ...block, ...patch } : block,
+      ),
+    }, false);
+  }
+
+  function removeFixedBlock(blockId: string) {
+    applyOptions({
+      ...planOptions,
+      fixedBlocks: (planOptions.fixedBlocks ?? []).filter((block) => block.id !== blockId),
+    });
+  }
+
+  function regenerateIfNeeded() {
+    if (generatedPlan && !isGenerating) {
+      generate(selectedAttractions, planOptions);
     }
   }
 
@@ -173,13 +239,90 @@ export default function PlannerScreen() {
 
       <Panel theme={theme}>
         <View style={localStyles.panelHeader}>
+          <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>固定予定</Text>
+          <View style={localStyles.fixedActions}>
+            <IconButton icon="cafe" label="休憩" onPress={() => addFixedBlock("break")} theme={theme} />
+            <IconButton icon="musical-notes" label="ショー" onPress={() => addFixedBlock("show")} theme={theme} />
+          </View>
+        </View>
+
+        {(planOptions.fixedBlocks ?? []).length === 0 ? (
+          <Text style={[localStyles.fixedEmpty, { color: theme.colors.subtext }]}>
+            ショー・休憩・授乳・おみやげ時間なし
+          </Text>
+        ) : (
+          <View style={localStyles.fixedList}>
+            {(planOptions.fixedBlocks ?? []).map((block) => (
+              <View key={block.id} style={[localStyles.fixedRow, { borderColor: theme.colors.border }]}>
+                <View style={localStyles.fixedTypeRow}>
+                  <Chip
+                    label="休憩"
+                    icon="cafe"
+                    active={block.type === "break"}
+                    onPress={() => updateFixedBlock(block.id, { type: "break" })}
+                    theme={theme}
+                  />
+                  <Chip
+                    label="ショー"
+                    icon="musical-notes"
+                    active={block.type === "show"}
+                    onPress={() => updateFixedBlock(block.id, { type: "show" })}
+                    theme={theme}
+                  />
+                  <Pressable
+                    onPress={() => removeFixedBlock(block.id)}
+                    style={[localStyles.fixedDeleteButton, { backgroundColor: theme.colors.surfaceAlt }]}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={theme.colors.danger} />
+                  </Pressable>
+                </View>
+                <TextInput
+                  value={block.name}
+                  onChangeText={(value) => updateFixedBlock(block.id, { name: value.slice(0, 18) })}
+                  style={[localStyles.fixedNameInput, { color: theme.colors.text, borderColor: theme.colors.border }]}
+                />
+                <View style={localStyles.fixedTimeRow}>
+                  <View style={[localStyles.fixedTimeBox, { borderColor: theme.colors.border }]}>
+                    <Text style={[localStyles.inputLabel, { color: theme.colors.subtext }]}>開始</Text>
+                    <TextInput
+                      value={formatMinuteOfDay(block.startMinute)}
+                      onChangeText={(value) =>
+                        updateFixedBlock(block.id, { startMinute: parseClock(value, block.startMinute) })
+                      }
+                      onEndEditing={regenerateIfNeeded}
+                      style={[localStyles.fixedTimeInput, { color: theme.colors.text }]}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </View>
+                  <View style={[localStyles.fixedTimeBox, { borderColor: theme.colors.border }]}>
+                    <Text style={[localStyles.inputLabel, { color: theme.colors.subtext }]}>終了</Text>
+                    <TextInput
+                      value={formatMinuteOfDay(block.endMinute)}
+                      onChangeText={(value) =>
+                        updateFixedBlock(block.id, { endMinute: parseClock(value, block.endMinute) })
+                      }
+                      onEndEditing={regenerateIfNeeded}
+                      style={[localStyles.fixedTimeInput, { color: theme.colors.text }]}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </Panel>
+
+      <Panel theme={theme}>
+        <View style={localStyles.panelHeader}>
           <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>選択中</Text>
           <IconButton
             icon="sparkles"
             label="生成"
             onPress={() => generate()}
             theme={theme}
-            disabled={selectedAttractions.length === 0}
+            disabled={selectedAttractions.length === 0 || isGenerating}
+            loading={isGenerating}
           />
         </View>
 
@@ -406,6 +549,65 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     fontWeight: "700",
+  },
+  fixedActions: {
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: 8,
+  },
+  fixedEmpty: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  fixedList: {
+    marginTop: 10,
+    gap: 10,
+  },
+  fixedRow: {
+    borderTopWidth: 1,
+    paddingTop: 10,
+    gap: 8,
+  },
+  fixedTypeRow: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  fixedDeleteButton: {
+    marginLeft: "auto",
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fixedNameInput: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  fixedTimeRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  fixedTimeBox: {
+    flex: 1,
+    minHeight: 56,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  fixedTimeInput: {
+    marginTop: 2,
+    padding: 0,
+    fontSize: 16,
+    fontWeight: "900",
   },
   empty: {
     paddingVertical: 22,

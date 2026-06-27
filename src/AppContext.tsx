@@ -62,6 +62,7 @@ const defaultPlanOptions: PlanOptions = {
   endMinute: 20 * 60,
   pace: "balanced",
   lunchMinute: 12 * 60 + 20,
+  fixedBlocks: [],
 };
 
 function normalizeSavedPlan(raw: unknown): SavedPlan | null {
@@ -69,8 +70,14 @@ function normalizeSavedPlan(raw: unknown): SavedPlan | null {
   const plan = raw as Partial<SavedPlan>;
   if (typeof plan.id !== "string" || typeof plan.name !== "string" || typeof plan.createdAt !== "string") return null;
   if (!plan.options || !Array.isArray(plan.items) || !Array.isArray(plan.selectedAttractions)) return null;
+  const options = {
+    ...defaultPlanOptions,
+    ...plan.options,
+    fixedBlocks: Array.isArray(plan.options.fixedBlocks) ? plan.options.fixedBlocks : [],
+  };
   return {
     ...(plan as SavedPlan),
+    options,
     totalTravelMinutes: typeof plan.totalTravelMinutes === "number" ? plan.totalTravelMinutes : 0,
     optimizationStats: plan.optimizationStats,
   };
