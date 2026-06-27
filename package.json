@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "verify:no-mojibake": "node scripts/verifyNoMojibake.mjs",
+    "verify:plans": "tsx scripts/verifyPlanPatterns.mjs",
     "dev:proxy": "node scripts/devProxy.mjs",
     "collect:waits": "node scripts/collectWaits.mjs",
     "analyze:waits": "node scripts/analyzeWaitSamples.mjs"
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "babel-preset-expo": "^54.0.10",
+    "tsx": "^4.22.4",
     "typescript": "~5.9.2"
   }
 }

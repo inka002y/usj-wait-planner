@@ -45,6 +45,7 @@ interface AppContextValue {
   databaseStats: DatabaseStats;
   parkSummary: ReturnType<typeof summarizePark>;
   selectedAttractions: SelectedAttraction[];
+  setSelectedAttractions: React.Dispatch<React.SetStateAction<SelectedAttraction[]>>;
   toggleAttraction: (attractionId: string) => void;
   setAttractionPriority: (attractionId: string, priority: Priority) => void;
   planOptions: PlanOptions;
@@ -68,7 +69,10 @@ function normalizeSavedPlan(raw: unknown): SavedPlan | null {
   const plan = raw as Partial<SavedPlan>;
   if (typeof plan.id !== "string" || typeof plan.name !== "string" || typeof plan.createdAt !== "string") return null;
   if (!plan.options || !Array.isArray(plan.items) || !Array.isArray(plan.selectedAttractions)) return null;
-  return plan as SavedPlan;
+  return {
+    ...(plan as SavedPlan),
+    totalTravelMinutes: typeof plan.totalTravelMinutes === "number" ? plan.totalTravelMinutes : 0,
+  };
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -153,6 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         selectedAttractions,
         items: plan.items,
         totalExpectedWaitMinutes: plan.totalExpectedWaitMinutes,
+        totalTravelMinutes: plan.totalTravelMinutes,
         unscheduledNames: plan.unscheduledNames,
       };
       const nextPlans = [nextPlan, ...savedPlans].slice(0, 8);
@@ -227,6 +232,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       databaseStats,
       parkSummary,
       selectedAttractions,
+      setSelectedAttractions,
       toggleAttraction,
       setAttractionPriority,
       planOptions,

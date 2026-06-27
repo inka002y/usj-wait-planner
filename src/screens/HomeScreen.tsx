@@ -188,7 +188,7 @@ export default function HomeScreen() {
                   </Text>
                   <Text style={[localStyles.savedMeta, { color: theme.colors.subtext }]} numberOfLines={1}>
                     {formatMinuteOfDay(plan.options.startMinute)}-{formatMinuteOfDay(plan.options.endMinute)}
-                    {` / ${plan.items.filter((item) => item.type === "ride").length}件 / 待ち${plan.totalExpectedWaitMinutes}分`}
+                    {` / ${plan.items.filter((item) => item.type === "ride").length}件 / 待ち${plan.totalExpectedWaitMinutes}分 / 移動${plan.totalTravelMinutes ?? 0}分`}
                   </Text>
                 </View>
                 <Pressable

@@ -2,7 +2,7 @@ export type WaitStatus = "operating" | "closed" | "down" | "unknown";
 
 export type ColorMode = "light" | "dark";
 
-export type PlanPace = "efficient" | "balanced" | "family";
+export type PlanPace = "efficient" | "distance" | "balanced" | "family";
 
 export type Priority = "must" | "high" | "normal";
 
@@ -116,11 +116,13 @@ export interface SavedPlan {
   selectedAttractions: SelectedAttraction[];
   items: PlanItem[];
   totalExpectedWaitMinutes: number;
+  totalTravelMinutes: number;
   unscheduledNames: string[];
 }
 
 export interface UsjPlan {
   items: PlanItem[];
   totalExpectedWaitMinutes: number;
+  totalTravelMinutes: number;
   unscheduledNames: string[];
 }

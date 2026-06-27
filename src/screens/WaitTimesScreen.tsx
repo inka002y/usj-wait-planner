@@ -138,8 +138,12 @@ export default function WaitTimesScreen() {
               <View style={[localStyles.waitRibbon, { backgroundColor: row.currentStatus === "operating" ? theme.colors.primary : theme.colors.surfaceAlt }]}>
                 <Text style={[localStyles.waitRibbonText, { color: row.currentStatus === "operating" ? "#FFFFFF" : theme.colors.subtext }]}>
                   {row.currentStatus === "operating" && typeof row.currentWaitMinutes === "number"
-                    ? `${row.currentWaitMinutes} min wait`
-                    : "休止中"}
+                    ? `${row.currentWaitMinutes}分待ち`
+                    : row.currentStatus === "operating"
+                      ? "運営中"
+                      : row.currentStatus === "unknown"
+                        ? "確認中"
+                        : "休止中"}
                 </Text>
               </View>
               <View style={localStyles.rideTop}>

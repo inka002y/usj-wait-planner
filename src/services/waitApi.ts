@@ -98,13 +98,14 @@ export async function fetchLiveWaits(): Promise<LiveWait[]> {
       const waitMinutes = normalizeWaitMinutes(ride.wait_time);
       const rawStatus = statusFromQueueTimes(ride);
       const staleMinutes = minutesBetween(ride.last_updated ?? null);
-      const status: WaitStatus = isStaleWait(staleMinutes) ? "unknown" : rawStatus;
+      const stale = isStaleWait(staleMinutes);
+      const status: WaitStatus = stale && rawStatus !== "operating" ? "unknown" : rawStatus;
 
       return {
         id: attraction.id,
         name: attraction.name,
         area: attraction.area,
-        waitMinutes: status === "operating" ? waitMinutes : null,
+        waitMinutes: status === "operating" && !stale ? waitMinutes : null,
         status,
         isOpen: status === "operating",
         lastUpdated: ride.last_updated ?? null,

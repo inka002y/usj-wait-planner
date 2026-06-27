@@ -4,8 +4,9 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useAppContext } from "../AppContext";
 import { Chip, getTheme, IconButton, PageHeader, Panel, Screen, WaitBadge } from "../components/ui";
+import { PLAN_TEMPLATES, PlanTemplate } from "../data/planTemplates";
 import { buildUsjPlan } from "../services/planner";
-import { PlanPace, Priority, UsjPlan } from "../types";
+import { PlanOptions, PlanPace, Priority, SelectedAttraction, UsjPlan } from "../types";
 import { formatMinuteOfDay, parseClock } from "../utils/time";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
@@ -16,8 +17,16 @@ const PRIORITY_LABEL: Record<Priority, string> = {
 
 const PACE_LABEL: Record<PlanPace, string> = {
   efficient: "効率",
+  distance: "移動少なめ",
   balanced: "標準",
   family: "ゆったり",
+};
+
+const PACE_ICON: Record<PlanPace, React.ComponentProps<typeof Ionicons>["name"]> = {
+  efficient: "flash",
+  distance: "navigate",
+  balanced: "walk",
+  family: "happy",
 };
 
 export default function PlannerScreen() {
@@ -25,6 +34,7 @@ export default function PlannerScreen() {
     colorMode,
     analyses,
     selectedAttractions,
+    setSelectedAttractions,
     setAttractionPriority,
     toggleAttraction,
     planOptions,
@@ -33,6 +43,7 @@ export default function PlannerScreen() {
   } = useAppContext();
   const theme = getTheme(colorMode === "dark");
   const [generatedPlan, setGeneratedPlan] = useState<UsjPlan | null>(null);
+  const [lastGenerationMs, setLastGenerationMs] = useState<number | null>(null);
   const [planName, setPlanName] = useState("USJプラン");
   const selectedIds = new Set(selectedAttractions.map((row) => row.attractionId));
 
@@ -45,13 +56,35 @@ export default function PlannerScreen() {
     .filter((row) => row.currentStatus === "operating" || row.dataSource !== "baseline")
     .slice(0, 10);
 
-  function generate() {
+  function generate(
+    nextSelectedAttractions: SelectedAttraction[] = selectedAttractions,
+    nextOptions: PlanOptions = planOptions,
+  ) {
+    const startedAt = typeof performance === "undefined" ? Date.now() : performance.now();
     const plan = buildUsjPlan({
-      selectedAttractions,
+      selectedAttractions: nextSelectedAttractions,
       analyses,
-      options: planOptions,
+      options: nextOptions,
     });
+    const endedAt = typeof performance === "undefined" ? Date.now() : performance.now();
     setGeneratedPlan(plan);
+    setLastGenerationMs(Math.max(1, Math.round(endedAt - startedAt)));
+  }
+
+  function applyTemplate(template: PlanTemplate) {
+    const nextOptions = { ...planOptions, ...template.options };
+    setSelectedAttractions(template.selectedAttractions);
+    setPlanOptions(nextOptions);
+    setPlanName(template.label);
+    generate(template.selectedAttractions, nextOptions);
+  }
+
+  function applyPace(pace: PlanPace) {
+    const nextOptions = { ...planOptions, pace };
+    setPlanOptions(nextOptions);
+    if (generatedPlan) {
+      generate(selectedAttractions, nextOptions);
+    }
   }
 
   return (
@@ -110,10 +143,30 @@ export default function PlannerScreen() {
               key={pace}
               label={PACE_LABEL[pace]}
               active={planOptions.pace === pace}
-              onPress={() => setPlanOptions((current) => ({ ...current, pace }))}
+              onPress={() => applyPace(pace)}
               theme={theme}
-              icon={pace === "efficient" ? "flash" : pace === "family" ? "happy" : "walk"}
+              icon={PACE_ICON[pace]}
             />
+          ))}
+        </View>
+      </Panel>
+
+      <Panel theme={theme}>
+        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>おすすめパターン</Text>
+        <View style={localStyles.templateGrid}>
+          {PLAN_TEMPLATES.map((template) => (
+            <Pressable
+              key={template.id}
+              onPress={() => applyTemplate(template)}
+              style={[localStyles.templateButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}
+            >
+              <Text style={[localStyles.templateTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                {template.label}
+              </Text>
+              <Text style={[localStyles.templateDescription, { color: theme.colors.subtext }]} numberOfLines={2}>
+                {template.description}
+              </Text>
+            </Pressable>
           ))}
         </View>
       </Panel>
@@ -124,7 +177,7 @@ export default function PlannerScreen() {
           <IconButton
             icon="sparkles"
             label="生成"
-            onPress={generate}
+            onPress={() => generate()}
             theme={theme}
             disabled={selectedAttractions.length === 0}
           />
@@ -229,7 +282,9 @@ export default function PlannerScreen() {
             <View>
               <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>生成結果</Text>
               <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>
-                待ち合計 {generatedPlan.totalExpectedWaitMinutes}分
+                {generatedPlan.items.filter((item) => item.type === "ride").length}件 / 待ち
+                {generatedPlan.totalExpectedWaitMinutes}分 / 移動{generatedPlan.totalTravelMinutes}分
+                {lastGenerationMs !== null ? ` / 生成${lastGenerationMs}ms` : ""}
               </Text>
             </View>
             <View style={localStyles.saveBox}>
@@ -323,6 +378,30 @@ const localStyles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  templateGrid: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  templateButton: {
+    width: "48%",
+    minHeight: 78,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    justifyContent: "center",
+  },
+  templateTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  templateDescription: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
   },
   empty: {
     paddingVertical: 22,

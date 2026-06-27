@@ -168,15 +168,20 @@ Deno.serve(async (req) => {
     };
   });
 
+  let staleCount = 0;
   const samples = rides.map((ride) => {
     const id = String(ride.id);
     const isOpen = ride.is_open === true;
     const isStale = (ageMinutes(ride.last_updated, observedDate) ?? 0) > STALE_WAIT_MAX_MINUTES;
-    const status = isStale ? "unknown" : isOpen ? "operating" : "closed";
+    if (isStale) {
+      staleCount += 1;
+    }
+    const rawStatus = isOpen ? "operating" : ride.is_open === false ? "closed" : "unknown";
+    const status = isStale && rawStatus !== "operating" ? "unknown" : rawStatus;
     return {
       attraction_id: id,
       sampled_at: isStale ? observedAt : ride.last_updated ?? observedAt,
-      wait_minutes: status === "operating" ? normalizeWaitMinutes(ride.wait_time) : null,
+      wait_minutes: status === "operating" && !isStale ? normalizeWaitMinutes(ride.wait_time) : null,
       status,
       source: SOURCE,
     };
@@ -190,7 +195,8 @@ Deno.serve(async (req) => {
     observedAt,
     rideCount: rides.length,
     operatingCount: samples.filter((row) => row.status === "operating").length,
-    staleCount: samples.filter((row) => row.status === "unknown").length,
+    staleCount,
+    unknownCount: samples.filter((row) => row.status === "unknown").length,
     sampleCount: samples.length,
   });
 });

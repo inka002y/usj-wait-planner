@@ -281,7 +281,7 @@ export function WaitBadge({
   theme: Theme;
 }) {
   const isOpen = status === "operating";
-  const label = isOpen && typeof waitMinutes === "number" ? `${waitMinutes}分` : "休止";
+  const label = isOpen ? (typeof waitMinutes === "number" ? `${waitMinutes}分` : "運営中") : status === "unknown" ? "確認中" : "休止";
   const background = isOpen ? (waitMinutes !== null && waitMinutes >= 70 ? theme.colors.primary : theme.colors.green) : theme.colors.surfaceAlt;
   const color = isOpen ? "#FFFFFF" : theme.colors.subtext;
 

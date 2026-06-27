@@ -8,25 +8,37 @@ import {
   UsjPlan,
 } from "../types";
 
+type ScoreLevel = 1 | 2 | 3 | 4 | 5;
+
 type Candidate = {
   id: string;
   name: string;
   area: string;
   durationMinutes: number;
+  thrillLevel: ScoreLevel;
+  familyScore: ScoreLevel;
   priority: Priority;
   analysis: AttractionAnalysis | null;
 };
 
 const PRIORITY_BONUS: Record<Priority, number> = {
-  must: 28,
-  high: 14,
+  must: 90,
+  high: 32,
   normal: 0,
 };
 
 const PACE_BUFFER: Record<PlanOptions["pace"], number> = {
   efficient: 8,
+  distance: 10,
   balanced: 13,
   family: 18,
+};
+
+const SCORE_WEIGHT: Record<PlanOptions["pace"], { wait: number; travel: number }> = {
+  efficient: { wait: 1.15, travel: 0.9 },
+  distance: { wait: 0.6, travel: 3.4 },
+  balanced: { wait: 1, travel: 1.45 },
+  family: { wait: 0.8, travel: 2.1 },
 };
 
 function expectedWaitAtMinute(analysis: AttractionAnalysis | null, minute: number, fallback: number): number {
@@ -54,7 +66,18 @@ function candidateScore(candidate: Candidate, minute: number, currentArea: strin
   const fallback = attraction?.typicalWaitMinutes ?? 40;
   const wait = expectedWaitAtMinute(candidate.analysis, minute, fallback);
   const travel = travelMinutes(currentArea, candidate.area, options.pace);
-  return wait + travel - PRIORITY_BONUS[candidate.priority];
+  const weight = SCORE_WEIGHT[options.pace];
+  const familyPenalty =
+    options.pace === "family"
+      ? (5 - candidate.familyScore) * 18 + Math.max(0, candidate.thrillLevel - 2) * 10
+      : 0;
+  const sameAreaBonus = options.pace === "distance" && currentArea === candidate.area ? 18 : 0;
+  return wait * weight.wait + travel * weight.travel + familyPenalty - PRIORITY_BONUS[candidate.priority] - sameAreaBonus;
+}
+
+function isUnavailable(candidate: Candidate): boolean {
+  if (!candidate.analysis || candidate.analysis.dataSource === "baseline") return false;
+  return candidate.analysis.currentStatus !== "operating";
 }
 
 function makeFreeTime(startMinute: number, endMinute: number): PlanItem | null {
@@ -75,7 +98,7 @@ export function buildUsjPlan(params: {
   options: PlanOptions;
 }): UsjPlan {
   const analysisById = new Map(params.analyses.map((row) => [row.id, row]));
-  const remaining: Candidate[] = params.selectedAttractions
+  const candidates: Candidate[] = params.selectedAttractions
     .map((selected) => {
       const attraction = getAttractionById(selected.attractionId);
       const analysis = analysisById.get(selected.attractionId) ?? null;
@@ -85,18 +108,24 @@ export function buildUsjPlan(params: {
         name: attraction?.name ?? analysis?.name ?? selected.attractionId,
         area: attraction?.area ?? analysis?.area ?? "USJ",
         durationMinutes: attraction?.durationMinutes ?? 8,
+        thrillLevel: attraction?.thrillLevel ?? 2,
+        familyScore: attraction?.familyScore ?? 3,
         priority: selected.priority,
         analysis,
       };
     })
     .filter((row): row is Candidate => row !== null);
+  const remaining = candidates.filter((candidate) => !isUnavailable(candidate));
 
   const items: PlanItem[] = [];
-  const unscheduledNames: string[] = [];
+  const unscheduledNames: string[] = candidates
+    .filter(isUnavailable)
+    .map((candidate) => `${candidate.name}（運休/情報なし）`);
   let minute = params.options.startMinute;
   let currentArea: string | null = null;
   let lunchInserted = params.options.lunchMinute === null;
   let totalExpectedWaitMinutes = 0;
+  let totalTravelMinutes = 0;
   const buffer = PACE_BUFFER[params.options.pace];
 
   while (remaining.length > 0 && minute < params.options.endMinute) {
@@ -159,6 +188,7 @@ export function buildUsjPlan(params: {
       note: next.priority === "must" ? "優先" : undefined,
     });
     totalExpectedWaitMinutes += expectedWait;
+    totalTravelMinutes += travel;
     minute = end + buffer;
     currentArea = next.area;
   }
@@ -176,6 +206,7 @@ export function buildUsjPlan(params: {
   return {
     items,
     totalExpectedWaitMinutes,
+    totalTravelMinutes,
     unscheduledNames,
   };
 }

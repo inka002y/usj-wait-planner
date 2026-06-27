@@ -161,14 +161,15 @@ export function buildWaitAnalyses(liveRows: LiveWait[], samples: WaitSample[]): 
 }
 
 export function summarizePark(liveRows: LiveWait[], analyses: AttractionAnalysis[]) {
-  const operating = liveRows.filter((row) => row.status === "operating" && typeof row.waitMinutes === "number");
-  const waits = operating.map((row) => row.waitMinutes as number);
-  const longest = [...operating].sort((left, right) => (right.waitMinutes ?? 0) - (left.waitMinutes ?? 0))[0] ?? null;
-  const shortest = [...operating].sort((left, right) => (left.waitMinutes ?? 999) - (right.waitMinutes ?? 999))[0] ?? null;
+  const operatingRows = liveRows.filter((row) => row.status === "operating");
+  const operatingWithWait = operatingRows.filter((row) => typeof row.waitMinutes === "number");
+  const waits = operatingWithWait.map((row) => row.waitMinutes as number);
+  const longest = [...operatingWithWait].sort((left, right) => (right.waitMinutes ?? 0) - (left.waitMinutes ?? 0))[0] ?? null;
+  const shortest = [...operatingWithWait].sort((left, right) => (left.waitMinutes ?? 999) - (right.waitMinutes ?? 999))[0] ?? null;
   const databaseBacked = analyses.filter((row) => row.sampleCount > 0).length;
 
   return {
-    operatingCount: operating.length,
+    operatingCount: operatingRows.length,
     averageWaitMinutes: Math.round(average(waits) ?? 0),
     longest,
     shortest,
