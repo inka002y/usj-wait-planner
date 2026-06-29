@@ -22,7 +22,7 @@ export default function SettingsScreen() {
   return (
     <Screen isDark={isDark}>
       <PageHeader
-        eyebrow="Control Room"
+        eyebrow="アプリ設定"
         title="設定"
         subtitle={`最終更新 ${formatRelativeTime(lastRefreshAt)}`}
         icon="settings"
@@ -46,7 +46,7 @@ export default function SettingsScreen() {
 
       <View style={localStyles.statGrid}>
         <StatTile
-          label="保存サンプル"
+          label="保存データ"
           value={`${databaseStats.sampleCount}`}
           icon="server"
           theme={theme}
@@ -73,7 +73,7 @@ export default function SettingsScreen() {
           />
           <IconButton
             icon="trash"
-            label="端末内DBをクリア"
+            label="保存データを削除"
             onPress={() => {
               clearDatabase().catch(() => {});
             }}
@@ -93,7 +93,7 @@ export default function SettingsScreen() {
         >
           <Ionicons name="open-outline" size={18} color={theme.colors.primary} />
           <View style={localStyles.linkText}>
-            <Text style={[localStyles.linkTitle, { color: theme.colors.text }]}>Powered by Queue-Times.com</Text>
+            <Text style={[localStyles.linkTitle, { color: theme.colors.text }]}>待ち時間データ提供元</Text>
             <Text style={[localStyles.linkSub, { color: theme.colors.subtext }]}>ライブ待ち時間データ</Text>
           </View>
         </Pressable>
@@ -105,7 +105,7 @@ export default function SettingsScreen() {
         >
           <Ionicons name="open-outline" size={18} color={theme.colors.primary} />
           <View style={localStyles.linkText}>
-            <Text style={[localStyles.linkTitle, { color: theme.colors.text }]}>ThemeParks.wiki</Text>
+            <Text style={[localStyles.linkTitle, { color: theme.colors.text }]}>営業時間データ提供元</Text>
             <Text style={[localStyles.linkSub, { color: theme.colors.subtext }]}>営業時間データ</Text>
           </View>
         </Pressable>

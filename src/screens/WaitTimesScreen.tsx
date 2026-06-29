@@ -3,10 +3,10 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAppContext } from "../AppContext";
-import { Chip, getTheme, PageHeader, Panel, Screen, WaitBadge } from "../components/ui";
+import { Chip, getTheme, PageHeader, Panel, Screen } from "../components/ui";
 import { getAttractionById } from "../data/attractions";
 import { formatVisitDayType } from "../utils/japanHoliday";
-import { formatMinuteOfDay } from "../utils/time";
+import { formatDateLabel, formatMinuteOfDay } from "../utils/time";
 
 type SortMode = "wait" | "area" | "best" | "selected";
 type CategoryMode = "all" | "kids" | "thrill" | "nintendo" | "indoor";
@@ -15,17 +15,11 @@ function normalizeSearch(value: string): string {
   return value.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 }
 
-function trendIcon(trend: string): React.ComponentProps<typeof Ionicons>["name"] {
-  if (trend === "up") return "trending-up";
-  if (trend === "down") return "trending-down";
-  if (trend === "flat") return "remove";
-  return "help";
-}
-
 export default function WaitTimesScreen() {
   const {
     colorMode,
     analyses,
+    planOptions,
     selectedAttractions,
     toggleAttraction,
     refreshLiveData,
@@ -71,12 +65,19 @@ export default function WaitTimesScreen() {
   return (
     <Screen isDark={colorMode === "dark"}>
       <PageHeader
-        eyebrow="Live Board"
+        eyebrow="待ち時間ボード"
         title="待ち時間"
-        subtitle={`${filtered.length}件 / 現在待ち時間`}
+        subtitle={`${formatDateLabel(planOptions.visitDateISO)} / ${formatVisitDayType(planOptions.dayType)}データで表示`}
         icon="pulse"
         theme={theme}
       />
+
+      <View style={[localStyles.contextNotice, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <Ionicons name="calendar-outline" size={17} color={theme.colors.primary} />
+        <Text style={[localStyles.contextText, { color: theme.colors.subtext }]}>
+          {formatVisitDayType(planOptions.dayType)}の来園日として、直近{planOptions.dayType === "holiday" ? 21 : 7}日間の同じ条件を参考にしています。
+        </Text>
+      </View>
 
       <View style={localStyles.searchRow}>
         <View style={[localStyles.searchBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -109,16 +110,17 @@ export default function WaitTimesScreen() {
       </View>
 
       <View style={localStyles.chips}>
-        <Chip label="待ち長い順" icon="time" active={sortMode === "wait"} onPress={() => setSortMode("wait")} theme={theme} />
-        <Chip label="エリア" icon="albums" active={sortMode === "area"} onPress={() => setSortMode("area")} theme={theme} />
-        <Chip label="狙い時" icon="flash" active={sortMode === "best"} onPress={() => setSortMode("best")} theme={theme} />
-        <Chip label="選択中" icon="checkmark" active={sortMode === "selected"} onPress={() => setSortMode("selected")} theme={theme} />
+        <Chip label="待ち時間順" icon="time" active={sortMode === "wait"} onPress={() => setSortMode("wait")} theme={theme} />
+        <Chip label="エリア順" icon="albums" active={sortMode === "area"} onPress={() => setSortMode("area")} theme={theme} />
+        <Chip label="空きやすい順" icon="flash" active={sortMode === "best"} onPress={() => setSortMode("best")} theme={theme} />
+        <Chip label="追加済み" icon="checkmark" active={sortMode === "selected"} onPress={() => setSortMode("selected")} theme={theme} />
       </View>
 
       <View style={localStyles.list}>
         {filtered.map((row) => {
           const selected = selectedIds.has(row.id);
           const attraction = getAttractionById(row.id);
+          const historyMaxWait = Math.max(20, ...row.hourlyProfile.map((point) => point.waitMinutes ?? 0));
           const tagLabel = attraction?.tags.includes("thrill")
             ? "スリル"
             : attraction?.tags.includes("family") || attraction?.tags.includes("kids")
@@ -150,7 +152,6 @@ export default function WaitTimesScreen() {
                 </Text>
               </View>
               <View style={localStyles.rideTop}>
-
                 <View style={[localStyles.thumbnail, { borderColor: attraction?.accentColor ?? theme.colors.primary }]}>
                   <Ionicons name={attraction?.tags.includes("show") ? "musical-notes" : "sparkles"} size={18} color={attraction?.accentColor ?? theme.colors.primary} />
                 </View>
@@ -162,7 +163,6 @@ export default function WaitTimesScreen() {
                     {row.area}
                   </Text>
                 </View>
-                <WaitBadge waitMinutes={row.currentWaitMinutes} status={row.currentStatus} theme={theme} />
               </View>
 
               <View style={localStyles.analysisRow}>
@@ -171,20 +171,8 @@ export default function WaitTimesScreen() {
                   <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>{tagLabel}</Text>
                 </View>
                 <View style={[localStyles.analysisPill, { backgroundColor: theme.colors.surfaceAlt }]}>
-                  <Ionicons name={trendIcon(row.trend)} size={14} color={theme.colors.primary} />
-                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>
-                    {row.trend === "up" ? "上昇" : row.trend === "down" ? "下降" : row.trend === "flat" ? "横ばい" : "不明"}
-                  </Text>
-                </View>
-                <View style={[localStyles.analysisPill, { backgroundColor: theme.colors.surfaceAlt }]}>
-                  <Ionicons name="server-outline" size={14} color={theme.colors.blue} />
-                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>
-                    {formatVisitDayType(row.dayType)} {row.dayTypeSampleCount}/{row.sampleCount}件
-                  </Text>
-                </View>
-                <View style={[localStyles.analysisPill, { backgroundColor: theme.colors.surfaceAlt }]}>
                   <Ionicons name="analytics-outline" size={14} color={theme.colors.green} />
-                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>狙い目 {row.bestTimeLabel}</Text>
+                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>空きやすい {row.bestTimeLabel}</Text>
                 </View>
               </View>
 
@@ -208,35 +196,47 @@ export default function WaitTimesScreen() {
                   style={[localStyles.historyActionButton, { backgroundColor: theme.colors.surfaceAlt }]}
                 >
                   <Ionicons name="stats-chart" size={16} color={theme.colors.primary} />
-                  <Text style={[localStyles.historyActionText, { color: theme.colors.text }]}>過去データ</Text>
+                  <Text style={[localStyles.historyActionText, { color: theme.colors.text }]}>
+                    {expandedHistoryId === row.id ? "傾向を閉じる" : "過去の傾向"}
+                  </Text>
                 </Pressable>
               </View>
 
               {expandedHistoryId === row.id ? (
                 <View style={[localStyles.historyBox, { borderTopColor: theme.colors.border }]}>
                   <View style={localStyles.historyHeader}>
-                    <Text style={[localStyles.historyTitle, { color: theme.colors.text }]}>時間帯別の待ち時間</Text>
-                    <Text style={[localStyles.historyMeta, { color: theme.colors.subtext }]}>直近{row.historyWindowDays}日 / {formatVisitDayType(row.dayType)}</Text>
+                    <Text style={[localStyles.historyTitle, { color: theme.colors.text }]}>過去の待ち時間傾向</Text>
+                    <Text style={[localStyles.historyMeta, { color: theme.colors.subtext }]}>
+                      {formatVisitDayType(row.dayType)}の直近{row.historyWindowDays}日
+                    </Text>
                   </View>
-                  <View style={localStyles.historyBars}>
+                  <Text style={[localStyles.historyHelp, { color: theme.colors.subtext }]}>
+                    来園日の曜日条件に合わせた過去データです。各行はその時間帯に並んだ場合の目安です。
+                  </Text>
+                  <View style={localStyles.historyRows}>
                     {row.hourlyProfile.map((point) => {
-                      const maxWait = Math.max(20, ...row.hourlyProfile.map((item) => item.waitMinutes ?? 0));
-                      const height = `${Math.max(8, Math.round(((point.waitMinutes ?? 0) / maxWait) * 72))}%` as `${number}%`;
+                      const width = `${Math.max(8, Math.round(((point.waitMinutes ?? 0) / historyMaxWait) * 100))}%` as `${number}%`;
                       return (
-                        <View key={`${row.id}-${point.hour}`} style={localStyles.historyBarColumn}>
-                          <View style={[localStyles.historyBarTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
+                        <View key={`${row.id}-${point.hour}`} style={localStyles.historyRow}>
+                          <Text style={[localStyles.historyTime, { color: theme.colors.text }]}>
+                            {formatMinuteOfDay(point.minuteOfDay)}台
+                          </Text>
+                          <View style={[localStyles.historyTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                             <View
                               style={[
-                                localStyles.historyBarFill,
+                                localStyles.historyFill,
                                 {
-                                  height,
+                                  width,
                                   backgroundColor: point.source === "database" ? theme.colors.primary : theme.colors.muted,
                                 },
                               ]}
                             />
                           </View>
-                          <Text style={[localStyles.historyBarLabel, { color: theme.colors.subtext }]}>
-                            {formatMinuteOfDay(point.minuteOfDay).slice(0, 2)}
+                          <Text style={[localStyles.historyWait, { color: theme.colors.text }]}>
+                            {point.waitMinutes ?? 0}分
+                          </Text>
+                          <Text style={[localStyles.historySource, { color: theme.colors.subtext }]}>
+                            {point.source === "database" ? "実績" : "推定"}
                           </Text>
                         </View>
                       );
@@ -253,6 +253,22 @@ export default function WaitTimesScreen() {
 }
 
 const localStyles = StyleSheet.create({
+  contextNotice: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  contextText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
   searchRow: {
     flexDirection: "row",
     gap: 10,
@@ -404,33 +420,45 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
-  historyBars: {
-    height: 104,
+  historyHelp: {
+    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  historyRows: {
+    gap: 8,
+  },
+  historyRow: {
+    minHeight: 28,
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 5,
-  },
-  historyBarColumn: {
-    flex: 1,
-    height: "100%",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
   },
-  historyBarTrack: {
+  historyTime: {
+    width: 64,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  historyTrack: {
     flex: 1,
-    width: "100%",
-    maxWidth: 16,
+    height: 10,
     borderRadius: 8,
     overflow: "hidden",
-    justifyContent: "flex-end",
   },
-  historyBarFill: {
-    width: "100%",
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+  historyFill: {
+    height: "100%",
+    borderRadius: 8,
   },
-  historyBarLabel: {
-    fontSize: 9,
+  historyWait: {
+    width: 42,
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  historySource: {
+    width: 28,
+    fontSize: 10,
     fontWeight: "800",
   },
 });

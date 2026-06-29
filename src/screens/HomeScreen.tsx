@@ -48,7 +48,7 @@ export default function HomeScreen() {
   return (
     <Screen isDark={colorMode === "dark"}>
       <PageHeader
-        eyebrow="Universal Studios Japan"
+        eyebrow="ユニバーサル・スタジオ・ジャパン"
         title="USJガイド"
         subtitle={`${formatScheduleLabel(schedule)}  /  ${formatRelativeTime(lastRefreshAt)}更新`}
         icon="film"
@@ -58,7 +58,7 @@ export default function HomeScreen() {
       <View style={[localStyles.hero, { backgroundColor: theme.colors.primary }]}>
         <View style={localStyles.heroTop}>
           <View>
-            <Text style={localStyles.heroLabel}>TODAY'S PARK HOURS</Text>
+            <Text style={localStyles.heroLabel}>本日の営業時間</Text>
             <Text style={localStyles.heroHours}>{formatScheduleLabel(schedule).replace("営業時間 ", "")}</Text>
           </View>
           <IconButton
@@ -103,7 +103,7 @@ export default function HomeScreen() {
           accent={theme.colors.primary}
         />
         <StatTile
-          label="DB件数"
+          label="保存データ"
           value={`${databaseStats.sampleCount}`}
           icon="server"
           theme={theme}
@@ -115,7 +115,7 @@ export default function HomeScreen() {
         <View style={localStyles.panelHeader}>
           <View>
             <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>待ち時間サマリー</Text>
-            <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>Powered by Queue-Times.com</Text>
+            <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>待ち時間データ提供元: Queue-Times.com</Text>
           </View>
           <Ionicons name="pulse-outline" size={22} color={theme.colors.primary} />
         </View>
@@ -155,7 +155,7 @@ export default function HomeScreen() {
                   {row.name}
                 </Text>
                 <Text style={[localStyles.recommendMeta, { color: theme.colors.subtext }]} numberOfLines={1}>
-                  {row.area} / ベスト {row.bestTimeLabel}
+                  {row.area} / 空きやすい {row.bestTimeLabel}
                 </Text>
               </View>
               <WaitBadge waitMinutes={row.currentWaitMinutes} status={row.currentStatus} theme={theme} />

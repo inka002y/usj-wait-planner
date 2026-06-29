@@ -170,7 +170,7 @@ export default function PlannerScreen() {
   return (
     <Screen isDark={colorMode === "dark"}>
       <PageHeader
-        eyebrow="Studio Route"
+        eyebrow="ルート作成"
         title="プラン作成"
         subtitle={`${formatDateLabel(planOptions.visitDateISO)} / ${formatVisitDayType(planOptions.dayType)}`}
         icon="map"
@@ -453,7 +453,7 @@ export default function PlannerScreen() {
               <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>
                 {generatedPlan.items.filter((item) => item.type === "ride").length}件 / 待ち
                 {generatedPlan.totalExpectedWaitMinutes}分 / 移動{generatedPlan.totalTravelMinutes}分
-                {lastGenerationMs !== null ? ` / 生成${lastGenerationMs}ms` : ""}
+                {lastGenerationMs !== null ? ` / 生成${lastGenerationMs}ミリ秒` : ""}
               </Text>
               <Text style={[localStyles.panelSub, { color: theme.colors.subtext }]}>
                 最適探索 {generatedPlan.optimizationStats.evaluatedStates.toLocaleString("ja-JP")}状態 / 候補
