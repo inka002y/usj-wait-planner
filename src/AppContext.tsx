@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchLiveWaits, fetchParkSchedule } from "./services/waitApi";
 import { buildWaitAnalyses, summarizePark } from "./services/waitAnalytics";
@@ -25,6 +25,7 @@ import {
   UsjPlan,
   WaitSample,
 } from "./types";
+import { getVisitDayType } from "./utils/japanHoliday";
 import { getTokyoDateISO } from "./utils/time";
 
 const COLOR_MODE_KEY = "usj_color_mode_v1";
@@ -41,6 +42,7 @@ interface AppContextValue {
   refreshError: string | null;
   lastRefreshAt: string | null;
   refreshLiveData: () => Promise<void>;
+  applyVisitDate: (dateISO: string) => Promise<void>;
   clearDatabase: () => Promise<void>;
   databaseStats: DatabaseStats;
   parkSummary: ReturnType<typeof summarizePark>;
@@ -57,7 +59,11 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const defaultVisitDateISO = getTokyoDateISO();
+
 const defaultPlanOptions: PlanOptions = {
+  visitDateISO: defaultVisitDateISO,
+  dayType: getVisitDayType(defaultVisitDateISO),
   startMinute: 9 * 60,
   endMinute: 20 * 60,
   pace: "balanced",
@@ -75,6 +81,9 @@ function normalizeSavedPlan(raw: unknown): SavedPlan | null {
     ...plan.options,
     fixedBlocks: Array.isArray(plan.options.fixedBlocks) ? plan.options.fixedBlocks : [],
   };
+  const visitDateISO = typeof options.visitDateISO === "string" ? options.visitDateISO : defaultVisitDateISO;
+  options.visitDateISO = visitDateISO;
+  options.dayType = getVisitDayType(visitDateISO);
   return {
     ...(plan as SavedPlan),
     options,
@@ -94,8 +103,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedAttractions, setSelectedAttractions] = useState<SelectedAttraction[]>([]);
   const [planOptions, setPlanOptions] = useState<PlanOptions>(defaultPlanOptions);
   const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
+  const planOptionsRef = useRef(defaultPlanOptions);
 
-  const analyses = useMemo(() => buildWaitAnalyses(liveRows, samples), [liveRows, samples]);
+  useEffect(() => {
+    planOptionsRef.current = planOptions;
+  }, [planOptions]);
+
+  const analyses = useMemo(() => buildWaitAnalyses(liveRows, samples, planOptions.dayType), [liveRows, planOptions.dayType, samples]);
   const databaseStats = useMemo(() => getDatabaseStats(samples), [samples]);
   const parkSummary = useMemo(() => summarizePark(liveRows, analyses), [liveRows, analyses]);
 
@@ -110,7 +124,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const [nextLiveRows, nextSchedule] = await Promise.all([
         fetchLiveWaits(),
-        fetchParkSchedule(getTokyoDateISO()),
+        fetchParkSchedule(planOptionsRef.current.visitDateISO),
       ]);
       setLiveRows(nextLiveRows);
       setSchedule(nextSchedule);
@@ -132,6 +146,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsRefreshing(false);
     }
+  }, []);
+
+  const applyVisitDate = useCallback(async (dateISO: string) => {
+    const nextDayType = getVisitDayType(dateISO);
+    setPlanOptions((current) => ({
+      ...current,
+      visitDateISO: dateISO,
+      dayType: nextDayType,
+    }));
+
+    const nextSchedule = await fetchParkSchedule(dateISO);
+    setSchedule(nextSchedule);
+    setPlanOptions((current) => ({
+      ...current,
+      visitDateISO: dateISO,
+      dayType: nextDayType,
+      startMinute: nextSchedule.openMinute,
+      endMinute: nextSchedule.closeMinute,
+    }));
   }, []);
 
   const clearDatabase = useCallback(async () => {
@@ -237,6 +270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshError,
       lastRefreshAt,
       refreshLiveData,
+      applyVisitDate,
       clearDatabase,
       databaseStats,
       parkSummary,
@@ -252,6 +286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       analyses,
+      applyVisitDate,
       clearDatabase,
       colorMode,
       databaseStats,

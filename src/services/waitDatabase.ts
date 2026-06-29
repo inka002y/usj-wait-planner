@@ -4,7 +4,7 @@ import { DatabaseStats, LiveWait, WaitSample } from "../types";
 
 const STORAGE_KEY = "usj_wait_samples_v1";
 const MAX_SAMPLE_AGE_DAYS = 21;
-const MAX_SAMPLES = 4500;
+const MAX_SAMPLES = 6000;
 
 function sampleKey(sample: WaitSample): string {
   return `${sample.attractionId}:${sample.sampledAt}:${sample.source}`;

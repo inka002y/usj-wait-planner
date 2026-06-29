@@ -1,4 +1,4 @@
-export const DAY_MINUTES = 24 * 60;
+﻿export const DAY_MINUTES = 24 * 60;
 
 const TOKYO_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Tokyo",
@@ -78,4 +78,28 @@ export function formatRelativeTime(iso: string | null | undefined): string {
 
 export function clampMinute(value: number, min = 7 * 60, max = 23 * 60): number {
   return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+export function fromISODate(dateISO: string): Date {
+  const [year, month, day] = dateISO.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+}
+
+export function toISODate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function addDaysISO(dateISO: string, days: number): string {
+  const date = fromISODate(dateISO);
+  date.setDate(date.getDate() + days);
+  return toISODate(date);
+}
+
+export function formatDateLabel(dateISO: string): string {
+  const date = fromISODate(dateISO);
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日(${weekdays[date.getDay()]})`;
 }

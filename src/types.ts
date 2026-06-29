@@ -4,6 +4,8 @@ export type ColorMode = "light" | "dark";
 
 export type PlanPace = "efficient" | "distance" | "balanced" | "family";
 
+export type VisitDayType = "weekday" | "holiday";
+
 export type Priority = "must" | "high" | "normal";
 
 export interface Attraction {
@@ -73,6 +75,9 @@ export interface AttractionAnalysis {
   bestHour: number | null;
   bestTimeLabel: string;
   hourlyProfile: HourlyWaitPoint[];
+  dayType: VisitDayType;
+  historyWindowDays: number;
+  dayTypeSampleCount: number;
   dataSource: "live+database" | "live+baseline" | "baseline";
 }
 
@@ -84,6 +89,8 @@ export interface DatabaseStats {
 }
 
 export interface PlanOptions {
+  visitDateISO: string;
+  dayType: VisitDayType;
   startMinute: number;
   endMinute: number;
   pace: PlanPace;

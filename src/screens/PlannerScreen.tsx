@@ -4,10 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useAppContext } from "../AppContext";
 import { Chip, getTheme, IconButton, PageHeader, Panel, Screen, WaitBadge } from "../components/ui";
-import { PLAN_TEMPLATES, PlanTemplate } from "../data/planTemplates";
+import { VisitDatePicker } from "../components/VisitDatePicker";
 import { buildUsjPlan } from "../services/planner";
 import { PlanFixedBlockType, PlanOptions, PlanPace, Priority, SelectedAttraction, UsjPlan } from "../types";
-import { formatMinuteOfDay, parseClock } from "../utils/time";
+import { formatVisitDayType, getVisitDayType } from "../utils/japanHoliday";
+import { addDaysISO, formatDateLabel, formatMinuteOfDay, getTokyoDateISO, parseClock } from "../utils/time";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   must: "絶対",
@@ -33,8 +34,9 @@ export default function PlannerScreen() {
   const {
     colorMode,
     analyses,
+    schedule,
     selectedAttractions,
-    setSelectedAttractions,
+    applyVisitDate,
     setAttractionPriority,
     toggleAttraction,
     planOptions,
@@ -45,9 +47,12 @@ export default function PlannerScreen() {
   const [generatedPlan, setGeneratedPlan] = useState<UsjPlan | null>(null);
   const [lastGenerationMs, setLastGenerationMs] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [planName, setPlanName] = useState("USJプラン");
   const generationToken = useRef(0);
   const selectedIds = new Set(selectedAttractions.map((row) => row.attractionId));
+  const minVisitDateISO = useMemo(() => getTokyoDateISO(), []);
+  const maxVisitDateISO = useMemo(() => addDaysISO(minVisitDateISO, 180), [minVisitDateISO]);
 
   const selectedRows = useMemo(
     () => analyses.filter((row) => selectedIds.has(row.id)),
@@ -87,12 +92,21 @@ export default function PlannerScreen() {
     }, 0);
   }
 
-  function applyTemplate(template: PlanTemplate) {
-    const nextOptions = { ...planOptions, ...template.options };
-    setSelectedAttractions(template.selectedAttractions);
-    setPlanOptions(nextOptions);
-    setPlanName(template.label);
-    generate(template.selectedAttractions, nextOptions);
+  function selectVisitDate(dateISO: string) {
+    setDatePickerVisible(false);
+    applyVisitDate(dateISO).catch(() => {
+      setPlanOptions((current) => ({
+        ...current,
+        visitDateISO: dateISO,
+        dayType: getVisitDayType(dateISO),
+      }));
+    });
+  }
+
+  function shiftVisitDate(days: number) {
+    const nextDate = addDaysISO(planOptions.visitDateISO, days);
+    if (nextDate < minVisitDateISO || nextDate > maxVisitDateISO) return;
+    selectVisitDate(nextDate);
   }
 
   function applyPace(pace: PlanPace) {
@@ -158,13 +172,45 @@ export default function PlannerScreen() {
       <PageHeader
         eyebrow="Studio Route"
         title="プラン作成"
-        subtitle={`${selectedAttractions.length}件選択中`}
+        subtitle={`${formatDateLabel(planOptions.visitDateISO)} / ${formatVisitDayType(planOptions.dayType)}`}
         icon="map"
         theme={theme}
       />
 
+      <VisitDatePicker
+        visible={datePickerVisible}
+        selectedISO={planOptions.visitDateISO}
+        minISO={minVisitDateISO}
+        maxISO={maxVisitDateISO}
+        theme={theme}
+        onClose={() => setDatePickerVisible(false)}
+        onSelect={selectVisitDate}
+      />
+
       <Panel theme={theme}>
-        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>時間とペース</Text>
+        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>来園日と時間</Text>
+        <View style={localStyles.dateRow}>
+          <Pressable
+            onPress={() => setDatePickerVisible(true)}
+            style={[localStyles.dateButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}
+          >
+            <Ionicons name="calendar" size={18} color={theme.colors.primary} />
+            <View style={localStyles.dateTextBox}>
+              <Text style={[localStyles.dateMain, { color: theme.colors.text }]}>{formatDateLabel(planOptions.visitDateISO)}</Text>
+              <Text style={[localStyles.dateSub, { color: theme.colors.subtext }]}>
+                {formatVisitDayType(planOptions.dayType)} / {schedule?.source === "themeparks.wiki" ? "営業時間反映" : "営業時間は暫定"}
+              </Text>
+            </View>
+          </Pressable>
+          <View style={localStyles.dateStepper}>
+            <Pressable style={[localStyles.stepButton, { backgroundColor: theme.colors.surfaceAlt }]} onPress={() => shiftVisitDate(-1)}>
+              <Ionicons name="chevron-back" size={18} color={theme.colors.text} />
+            </Pressable>
+            <Pressable style={[localStyles.stepButton, { backgroundColor: theme.colors.surfaceAlt }]} onPress={() => shiftVisitDate(1)}>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.text} />
+            </Pressable>
+          </View>
+        </View>
         <View style={localStyles.timeRow}>
           <View style={[localStyles.timeField, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
             <Text style={[localStyles.inputLabel, { color: theme.colors.subtext }]}>開始</Text>
@@ -213,26 +259,6 @@ export default function PlannerScreen() {
               theme={theme}
               icon={PACE_ICON[pace]}
             />
-          ))}
-        </View>
-      </Panel>
-
-      <Panel theme={theme}>
-        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>おすすめパターン</Text>
-        <View style={localStyles.templateGrid}>
-          {PLAN_TEMPLATES.map((template) => (
-            <Pressable
-              key={template.id}
-              onPress={() => applyTemplate(template)}
-              style={[localStyles.templateButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}
-            >
-              <Text style={[localStyles.templateTitle, { color: theme.colors.text }]} numberOfLines={1}>
-                {template.label}
-              </Text>
-              <Text style={[localStyles.templateDescription, { color: theme.colors.subtext }]} numberOfLines={2}>
-                {template.description}
-              </Text>
-            </Pressable>
           ))}
         </View>
       </Panel>
@@ -383,7 +409,7 @@ export default function PlannerScreen() {
       </Panel>
 
       <Panel theme={theme}>
-        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>候補</Text>
+        <Text style={[localStyles.panelTitle, { color: theme.colors.text }]}>待ち時間から追加</Text>
         <View style={localStyles.candidateList}>
           {popularRows.map((row) => {
             const selected = selectedIds.has(row.id);
@@ -499,6 +525,44 @@ const localStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
+  dateRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "stretch",
+  },
+  dateButton: {
+    flex: 1,
+    minHeight: 58,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  dateTextBox: {
+    flex: 1,
+  },
+  dateMain: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  dateSub: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  dateStepper: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  stepButton: {
+    width: 42,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   timeRow: {
     flexDirection: "row",
     gap: 8,
@@ -525,30 +589,6 @@ const localStyles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-  },
-  templateGrid: {
-    marginTop: 12,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  templateButton: {
-    width: "48%",
-    minHeight: 78,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    justifyContent: "center",
-  },
-  templateTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  templateDescription: {
-    marginTop: 4,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: "700",
   },
   fixedActions: {
     flexDirection: "row",

@@ -3,12 +3,19 @@ import {
   AttractionAnalysis,
   HourlyWaitPoint,
   LiveWait,
+  VisitDayType,
   WaitSample,
   WaitStatus,
 } from "../types";
-import { formatMinuteOfDay, getTokyoMinuteOfDay } from "../utils/time";
+import { getVisitDayType } from "../utils/japanHoliday";
+import { formatMinuteOfDay, getTokyoDateISO, getTokyoMinuteOfDay } from "../utils/time";
 
 const PROFILE_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+
+const HISTORY_WINDOW_DAYS: Record<VisitDayType, number> = {
+  weekday: 7,
+  holiday: 21,
+};
 
 const BASELINE_FACTORS: Record<number, number> = {
   8: 0.52,
@@ -42,6 +49,18 @@ function median(values: number[]): number | null {
 
 function getSampleMinute(sample: WaitSample): number {
   return getTokyoMinuteOfDay(new Date(sample.sampledAt));
+}
+
+function isSampleInRecentWindow(sample: WaitSample, days: number): boolean {
+  const time = new Date(sample.sampledAt).getTime();
+  if (!Number.isFinite(time)) return false;
+  return time >= Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+function sampleMatchesDayType(sample: WaitSample, dayType: VisitDayType): boolean {
+  const date = new Date(sample.sampledAt);
+  if (Number.isNaN(date.getTime())) return false;
+  return getVisitDayType(getTokyoDateISO(date)) === dayType;
 }
 
 function buildBaselineProfile(typicalWaitMinutes: number): HourlyWaitPoint[] {
@@ -105,7 +124,12 @@ function bestHourLabel(profile: HourlyWaitPoint[]): { bestHour: number | null; b
   };
 }
 
-export function buildWaitAnalyses(liveRows: LiveWait[], samples: WaitSample[]): AttractionAnalysis[] {
+export function buildWaitAnalyses(
+  liveRows: LiveWait[],
+  samples: WaitSample[],
+  dayType: VisitDayType = "weekday",
+): AttractionAnalysis[] {
+  const historyWindowDays = HISTORY_WINDOW_DAYS[dayType];
   const liveById = new Map(liveRows.map((row) => [row.id, row]));
   const sampleIds = new Set(samples.map((sample) => sample.attractionId));
   const ids = new Set<string>([
@@ -118,7 +142,10 @@ export function buildWaitAnalyses(liveRows: LiveWait[], samples: WaitSample[]): 
     .map((id) => {
       const attraction = getAttractionById(id);
       const live = liveById.get(id);
-      const attractionSamples = samples.filter((sample) => sample.attractionId === id);
+      const allAttractionSamples = samples.filter((sample) => sample.attractionId === id);
+      const recentSamples = allAttractionSamples.filter((sample) => isSampleInRecentWindow(sample, historyWindowDays));
+      const dayTypeSamples = recentSamples.filter((sample) => sampleMatchesDayType(sample, dayType));
+      const attractionSamples = dayTypeSamples.length > 0 ? dayTypeSamples : recentSamples;
       const numericSamples = attractionSamples
         .map((sample) => sample.waitMinutes)
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
@@ -149,6 +176,9 @@ export function buildWaitAnalyses(liveRows: LiveWait[], samples: WaitSample[]): 
         bestHour: best.bestHour,
         bestTimeLabel: best.bestTimeLabel,
         hourlyProfile: profile,
+        dayType,
+        historyWindowDays,
+        dayTypeSampleCount: dayTypeSamples.length,
         dataSource,
       };
     })

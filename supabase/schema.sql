@@ -90,3 +90,5 @@ as $$
 $$;
 
 grant execute on function public.usj_recent_slot_waits(text[], integer) to anon, authenticated;
+
+-- See migrations/20260629090000_usj_daytype_recent_slot_waits.sql for day-type aware USJ wait slot RPC.

@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../AppContext";
 import { Chip, getTheme, PageHeader, Panel, Screen, WaitBadge } from "../components/ui";
 import { getAttractionById } from "../data/attractions";
+import { formatVisitDayType } from "../utils/japanHoliday";
+import { formatMinuteOfDay } from "../utils/time";
 
 type SortMode = "wait" | "area" | "best" | "selected";
 type CategoryMode = "all" | "kids" | "thrill" | "nintendo" | "indoor";
@@ -33,6 +35,7 @@ export default function WaitTimesScreen() {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("wait");
   const [categoryMode, setCategoryMode] = useState<CategoryMode>("all");
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const selectedIds = new Set(selectedAttractions.map((row) => row.attractionId));
 
   const filtered = useMemo(() => {
@@ -46,7 +49,7 @@ export default function WaitTimesScreen() {
       if (categoryMode === "all") return true;
       if (categoryMode === "kids") return tags.includes("family") || tags.includes("kids");
       if (categoryMode === "thrill") return tags.includes("thrill") || tags.includes("coaster");
-      if (categoryMode === "nintendo") return row.area.includes("Nintendo") || row.area.includes("Donkey");
+      if (categoryMode === "nintendo") return tags.includes("nintendo");
       if (categoryMode === "indoor") return tags.includes("indoor") || tags.includes("show");
       return true;
     });
@@ -147,17 +150,7 @@ export default function WaitTimesScreen() {
                 </Text>
               </View>
               <View style={localStyles.rideTop}>
-                <Pressable
-                  onPress={() => toggleAttraction(row.id)}
-                  style={[
-                    localStyles.selectButton,
-                    {
-                      backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
-                    },
-                  ]}
-                >
-                  <Ionicons name={selected ? "checkmark" : "add"} size={18} color={selected ? "#FFFFFF" : theme.colors.text} />
-                </Pressable>
+
                 <View style={[localStyles.thumbnail, { borderColor: attraction?.accentColor ?? theme.colors.primary }]}>
                   <Ionicons name={attraction?.tags.includes("show") ? "musical-notes" : "sparkles"} size={18} color={attraction?.accentColor ?? theme.colors.primary} />
                 </View>
@@ -185,13 +178,72 @@ export default function WaitTimesScreen() {
                 </View>
                 <View style={[localStyles.analysisPill, { backgroundColor: theme.colors.surfaceAlt }]}>
                   <Ionicons name="server-outline" size={14} color={theme.colors.blue} />
-                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>{row.sampleCount}件</Text>
+                  <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>
+                    {formatVisitDayType(row.dayType)} {row.dayTypeSampleCount}/{row.sampleCount}件
+                  </Text>
                 </View>
                 <View style={[localStyles.analysisPill, { backgroundColor: theme.colors.surfaceAlt }]}>
                   <Ionicons name="analytics-outline" size={14} color={theme.colors.green} />
                   <Text style={[localStyles.analysisText, { color: theme.colors.text }]}>狙い目 {row.bestTimeLabel}</Text>
                 </View>
               </View>
+
+              <View style={localStyles.cardActions}>
+                <Pressable
+                  onPress={() => toggleAttraction(row.id)}
+                  style={[
+                    localStyles.planActionButton,
+                    {
+                      backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <Ionicons name={selected ? "checkmark-circle" : "add-circle-outline"} size={17} color={selected ? "#FFFFFF" : theme.colors.text} />
+                  <Text style={[localStyles.planActionText, { color: selected ? "#FFFFFF" : theme.colors.text }]}>
+                    {selected ? "プランに追加済み" : "プランに追加"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExpandedHistoryId((current) => (current === row.id ? null : row.id))}
+                  style={[localStyles.historyActionButton, { backgroundColor: theme.colors.surfaceAlt }]}
+                >
+                  <Ionicons name="stats-chart" size={16} color={theme.colors.primary} />
+                  <Text style={[localStyles.historyActionText, { color: theme.colors.text }]}>過去データ</Text>
+                </Pressable>
+              </View>
+
+              {expandedHistoryId === row.id ? (
+                <View style={[localStyles.historyBox, { borderTopColor: theme.colors.border }]}>
+                  <View style={localStyles.historyHeader}>
+                    <Text style={[localStyles.historyTitle, { color: theme.colors.text }]}>時間帯別の待ち時間</Text>
+                    <Text style={[localStyles.historyMeta, { color: theme.colors.subtext }]}>直近{row.historyWindowDays}日 / {formatVisitDayType(row.dayType)}</Text>
+                  </View>
+                  <View style={localStyles.historyBars}>
+                    {row.hourlyProfile.map((point) => {
+                      const maxWait = Math.max(20, ...row.hourlyProfile.map((item) => item.waitMinutes ?? 0));
+                      const height = `${Math.max(8, Math.round(((point.waitMinutes ?? 0) / maxWait) * 72))}%` as `${number}%`;
+                      return (
+                        <View key={`${row.id}-${point.hour}`} style={localStyles.historyBarColumn}>
+                          <View style={[localStyles.historyBarTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
+                            <View
+                              style={[
+                                localStyles.historyBarFill,
+                                {
+                                  height,
+                                  backgroundColor: point.source === "database" ? theme.colors.primary : theme.colors.muted,
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={[localStyles.historyBarLabel, { color: theme.colors.subtext }]}>
+                            {formatMinuteOfDay(point.minuteOfDay).slice(0, 2)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
             </Panel>
           );
         })}
@@ -256,13 +308,7 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 12,
   },
-  selectButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   thumbnail: {
     width: 46,
     height: 46,
@@ -303,5 +349,88 @@ const localStyles = StyleSheet.create({
   analysisText: {
     fontSize: 12,
     fontWeight: "900",
+  },
+  cardActions: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    flexDirection: "row",
+    gap: 8,
+  },
+  planActionButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  planActionText: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  historyActionButton: {
+    minWidth: 112,
+    minHeight: 40,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  historyActionText: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  historyBox: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  historyHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
+  },
+  historyTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  historyMeta: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  historyBars: {
+    height: 104,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 5,
+  },
+  historyBarColumn: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    gap: 4,
+  },
+  historyBarTrack: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 16,
+    borderRadius: 8,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  historyBarFill: {
+    width: "100%",
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+  },
+  historyBarLabel: {
+    fontSize: 9,
+    fontWeight: "800",
   },
 });

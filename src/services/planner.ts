@@ -69,12 +69,20 @@ function expectedWaitAtMinute(analysis: AttractionAnalysis | null, minute: numbe
   return Math.max(0, Math.round(nearest?.waitMinutes ?? analysis.currentWaitMinutes ?? analysis.averageWaitMinutes ?? fallback));
 }
 
+function isNintendoArea(area: string): boolean {
+  return area.includes("Nintendo") || area.includes("ニンテンドー");
+}
+
+function isDonkeyArea(area: string): boolean {
+  return area.includes("Donkey") || area.includes("ドンキー");
+}
+
 function travelMinutes(fromArea: string | null, toArea: string, pace: PlanOptions["pace"]): number {
   if (!fromArea) return pace === "family" ? 10 : 7;
   if (fromArea === toArea) return pace === "family" ? 6 : 4;
   if (
-    (fromArea.includes("Nintendo") && toArea.includes("Donkey")) ||
-    (fromArea.includes("Donkey") && toArea.includes("Nintendo"))
+    (isNintendoArea(fromArea) && isDonkeyArea(toArea)) ||
+    (isDonkeyArea(fromArea) && isNintendoArea(toArea))
   ) {
     return pace === "family" ? 8 : 5;
   }

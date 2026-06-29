@@ -15,8 +15,8 @@ type RemoteWaitSampleRow = {
   source?: string | null;
 };
 
-const RECENT_DAYS = 14;
-const SAMPLE_LIMIT = 3000;
+const RECENT_DAYS = 21;
+const SAMPLE_LIMIT = 5000;
 
 function getHeaders() {
   return {
