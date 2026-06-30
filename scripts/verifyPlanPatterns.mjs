@@ -1,9 +1,42 @@
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
-import { PLAN_TEMPLATES } from "../src/data/planTemplates.ts";
+import { USJ_ATTRACTIONS } from "../src/data/attractions.ts";
 import { buildUsjPlan } from "../src/services/planner.ts";
 import { buildWaitAnalyses } from "../src/services/waitAnalytics.ts";
+import { getVisitDayType } from "../src/utils/japanHoliday.ts";
+
+const VERIFY_SCENARIOS = [
+  {
+    label: "標準チェック",
+    attractionIds: ["12061", "14402", "12065", "7092", "7077", "12068", "12066"],
+    options: {},
+  },
+  {
+    label: "13件チェック",
+    attractionIds: USJ_ATTRACTIONS.slice(0, 13).map((attraction) => attraction.id),
+    options: {
+      fixedBlocks: [
+        { id: "verify-break", type: "break", name: "休憩", startMinute: 14 * 60, endMinute: 14 * 60 + 25 },
+        { id: "verify-show", type: "show", name: "ショー", startMinute: 15 * 60 + 30, endMinute: 16 * 60 + 10 },
+      ],
+    },
+  },
+  {
+    label: "子連れチェック",
+    attractionIds: USJ_ATTRACTIONS.filter((attraction) =>
+      attraction.tags.includes("family") || attraction.tags.includes("kids") || attraction.tags.includes("show"),
+    )
+      .slice(0, 9)
+      .map((attraction) => attraction.id),
+    options: {
+      pace: "family",
+      fixedBlocks: [
+        { id: "verify-nap", type: "break", name: "休憩", startMinute: 13 * 60 + 30, endMinute: 14 * 60 + 15 },
+      ],
+    },
+  },
+];
 
 function readEnv() {
   const entries = {};
@@ -43,13 +76,34 @@ async function fetchRest(path, env) {
   return response.json();
 }
 
-function toPlanOptions(template, pace) {
+function getTokyoDateISO() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type) => parts.find((part) => part.type === type)?.value ?? "01";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function toSelectedAttractions(attractionIds) {
+  return attractionIds.map((attractionId) => ({
+    attractionId,
+    priority: "normal",
+  }));
+}
+
+function toPlanOptions(scenario, pace, visitDateISO, dayType) {
   return {
+    visitDateISO,
+    dayType,
     startMinute: 9 * 60,
     endMinute: 20 * 60,
     pace,
     lunchMinute: 12 * 60 + 20,
-    ...template.options,
+    fixedBlocks: [],
+    ...scenario.options,
     pace,
   };
 }
@@ -113,25 +167,28 @@ const liveRows = [...latestById.values()].map((sample) => ({
   staleMinutes: null,
 }));
 
-const analyses = buildWaitAnalyses(liveRows, samples);
+const visitDateISO = getTokyoDateISO();
+const dayType = getVisitDayType(visitDateISO);
+const analyses = buildWaitAnalyses(liveRows, samples, dayType);
 const paces = ["efficient", "distance"];
 const results = [];
 
-for (const template of PLAN_TEMPLATES) {
+for (const scenario of VERIFY_SCENARIOS) {
   for (const pace of paces) {
-    const options = toPlanOptions(template, pace);
+    const options = toPlanOptions(scenario, pace, visitDateISO, dayType);
+    const selectedAttractions = toSelectedAttractions(scenario.attractionIds);
     const startedAt = performance.now();
     const plan = buildUsjPlan({
-      selectedAttractions: template.selectedAttractions,
+      selectedAttractions,
       analyses,
       options,
     });
     const generationMs = Math.max(1, Math.round(performance.now() - startedAt));
     const rideItems = plan.items.filter((item) => item.type === "ride");
     results.push({
-      template: template.label,
+      scenario: scenario.label,
       pace,
-      selected: template.selectedAttractions.length,
+      selected: selectedAttractions.length,
       scheduled: rideItems.length,
       waitMinutes: plan.totalExpectedWaitMinutes,
       travelMinutes: plan.totalTravelMinutes,
@@ -152,6 +209,8 @@ console.log(
     {
       sampleCount: samples.length,
       attractionCount: attractionById.size,
+      visitDateISO,
+      dayType,
       statusSummary,
       results,
     },
